@@ -21,32 +21,42 @@ void LexicalScanner::error(std::string msg) {
     exit(1);
 }
 
-Token* LexicalScanner::look() {
-        
-}
-
 void LexicalScanner::match(std::string s) {
-
+    std::string toMatch = getName();
+    if (s == toMatch) return;
+    throw new std::exception();
 }
 
 Token* LexicalScanner::get() {
-    if (std::isdigit(lookChar()) || lookChar() == '_') {
-        std::string value = getName();
+    std::string value = getName();
+    if (value.empty()) return nullptr;
+    char c = value[0];
+
+    if (keywords.find(value) != keywords.end()) {
+        return keywords[value];
+    }
+    if (operators.find(value) != operators.end()) {
+        return operators[value];
+    }
+    if (std::isdigit(c)) {
+        return new Token(value, TokenType::NUMBER);
+    }
+    if (std::isalpha(c) || c == '_') {
         return new Token(value, TokenType::IDENTIFIER);
     }
+
+    throw new std::exception();
 }
 
 std::string LexicalScanner::getName() {
-    if (blanks.couy)
-    std::string name = getChar();
+    passBlanks();
+    std::string s = "";
+    while (lookChar() && !std::isspace(lookChar())) s += getChar();
+    return s;
 }
 
 char LexicalScanner::getChar() {
-    if (buff.empty()) {
-        bool hasData = reloadBuffer();
-        if (!hasData) return '\0';
-    }
-    char c = buff.front();
+    char c = lookChar();
     buff.pop();
     return c;
 }
@@ -68,4 +78,8 @@ bool LexicalScanner::reloadBuffer() {
     for (int i = 0; i < readen; i++)
         this->buff.push(buff[i]);
     return true;
+}
+
+void inline LexicalScanner::passBlanks() {
+    while (std::isspace(lookChar())) getChar();
 }
