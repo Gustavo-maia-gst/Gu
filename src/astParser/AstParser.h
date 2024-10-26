@@ -6,22 +6,24 @@
 #endif
 #define _parser
 
-class AstParser {
+class AstParser
+{
 public:
-    AstParser(LexicalScanner* sc);
+    AstParser(LexicalScanner *sc);
     ~AstParser();
-    Node::ProgramNode* parseProgram();
+    Node::ProgramNode *parseProgram();
+    Node::ExprNode *parseExpr(int level = Order::MAX_PRECEDENCE_LEVEL);
 
 private:
-    LexicalScanner* sc;
+    LexicalScanner *sc;
 
-    Node::BodyDef* parseBody();
-    Node::StatementDef* parseStatement();
-    Node::IfDef* parseIf();
-    Node::ForDef* parseFor();
-    Node::WhileDef* parseWhile();
-    Node::FunctionDef* parseFunctionDef();
-    Node::AssignDef* parseAssign();
-    Node::ExprNode* parseExpr();
-    Node::VariableDef* parseVarDef();
+    Node::BodyDef *parseBody();
+    Node::StatementDef *parseStatement();
+    Node::IfDef *parseIf();
+    Node::ForDef *parseFor();
+    Node::WhileDef *parseWhile();
+    Node::FunctionDef *parseFunctionDef();
+    Node::AssignDef *parseAssign();
+    Node::VariableDef *parseVarDef();
+    Node::AtomNode *parseAtom();
 };

@@ -1,4 +1,4 @@
-#ifndef base
+#ifndef _base
 #include "../types/Base.cpp"
 #endif
 #ifndef _token
@@ -6,17 +6,18 @@
 #endif
 #define _scanner
 
-class LexicalScanner {
+class LexicalScanner
+{
 public:
     LexicalScanner(std::string path);
     ~LexicalScanner();
-    void expected(std::string expected, std::string got);
-    void error(std::string msg);
     void match(std::string s);
-    Token* get();
+    void expect(TokenType type, std::string description);
+    Token *get();
+    Token *get_expected(TokenType type, std::string description);
 
 private:
-    std::ifstream* file;
+    std::ifstream *file;
     std::queue<char> buff;
 
     std::string getName();
