@@ -207,6 +207,7 @@ namespace Node
         CONSTANT,
         VARIABLE,
         FUNCCALL,
+        EXPR,
     };
 
     struct AtomNode : ExprNode
@@ -241,6 +242,16 @@ namespace Node
         ~ConstantNode()
         {
             delete value;
+        }
+    };
+
+    struct ExprAtomNode : AtomNode
+    {
+        ExprNode *expr;
+
+        ~ExprAtomNode()
+        {
+            delete expr;
         }
     };
 

@@ -16,6 +16,7 @@ public:
 
 private:
     LexicalScanner *sc;
+    Node::ProgramNode *context; 
 
     Node::BodyDef *parseBody();
     Node::StatementDef *parseStatement();

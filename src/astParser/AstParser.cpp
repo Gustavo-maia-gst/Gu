@@ -12,8 +12,8 @@ AstParser::~AstParser()
 
 Node::ProgramNode *AstParser::parseProgram()
 {
-    std::vector<Node::FunctionDef *> funcDefinitions;
-    std::vector<Node::VariableDef *> globalVarsDefinitions;
+    auto node = new Node::ProgramNode;
+    this->context = node;
 
     Token *token;
     while ((token = this->sc->get()))
@@ -21,29 +21,22 @@ Node::ProgramNode *AstParser::parseProgram()
         switch (token->type)
         {
         case TokenType::FUNC:
-            funcDefinitions.push_back(this->parseFunctionDef());
+            auto funcDef = this->parseFunctionDef();
+            node->funcDefs[*(funcDef->identifier)] = funcDef;
+            if (funcDef->identifier->value == "main")
+            {
+                if (!node->main_func)
+                    compile_error("main function defined twice");
+                node->main_func = funcDef;
+            }
             break;
         case TokenType::VAR:
-            globalVarsDefinitions.push_back(this->parseVarDef());
+            auto varDef = this->parseVarDef();
+            node->varsDefs[*(varDef->identifier)] = varDef;
+            break;
         default:
             break;
         }
-    }
-
-    auto node = new Node::ProgramNode;
-    for (auto func : funcDefinitions)
-    {
-        node->funcDefs[*(func->identifier)] = func;
-        if (func->identifier->value == "main")
-        {
-            if (!node->main_func)
-                compile_error("main function defined twice");
-            node->main_func = func;
-        }
-    }
-    for (auto var : globalVarsDefinitions)
-    {
-        node->varsDefs[*(var->identifier)] = var;
     }
 
     if (!node->main_func)
@@ -98,4 +91,29 @@ Node::ExprNode *AstParser::parseExpr(int level = Order::MAX_PRECEDENCE_LEVEL)
 
     auto handler = levelMapper[op->type];
     return handler(this, left);
+}
+
+Node::AtomNode *AstParser::parseAtom()
+{
+    Token *token = this->sc->get();
+    if (this->sc->lookChar() == '(')
+    {
+        this->sc->match("(");
+        auto expr = this->parseExpr();
+        this->sc->match(")");
+        auto node = new Node::ExprAtomNode;
+        node->nodeType = Node::ExprNodeType::ATOM;
+        node->atomType = Node::AtomNodeType::EXPR;
+        node->expr = expr;
+        node->exprType = expr->exprType;
+        return node;
+    }
+
+    switch (token->type)
+    {
+    case TokenType::IDENTIFIER:
+        break;
+    default:
+        break;
+    }
 }

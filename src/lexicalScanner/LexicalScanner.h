@@ -15,6 +15,7 @@ public:
     void expect(TokenType type, std::string description);
     Token *get();
     Token *get_expected(TokenType type, std::string description);
+    char lookChar();
 
 private:
     std::ifstream *file;
@@ -22,7 +23,6 @@ private:
 
     std::string getName();
     char getChar();
-    char lookChar();
     bool reloadBuffer();
     void passBlanks();
 };
