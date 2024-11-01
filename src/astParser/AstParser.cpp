@@ -327,7 +327,7 @@ Node::ProgramNode *AstParser::parseProgram()
             node->funcDefs[*(funcDef->identifier)] = funcDef;
             if (funcDef->identifier->value == "main")
             {
-                if (!node->main_func)
+                if (node->main_func)
                     compile_error("main function defined twice");
                 node->main_func = funcDef;
             }
