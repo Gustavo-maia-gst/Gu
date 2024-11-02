@@ -1,7 +1,8 @@
-#include <string>
+#ifndef _token
 #define _token
+#include <string>
 
-enum TokenType
+enum class TokenType
 {
     IF,
     WHILE,
@@ -54,6 +55,16 @@ public:
     bool operator==(const Token &other) const
     {
         return other.type == this->type && other.value == this->value;
+    }
+
+    bool operator<(const Token &other) const
+    {
+        return other.type == this->type && other.value < this->value;
+    }
+
+    bool operator>(const Token &other) const
+    {
+        return other.type == this->type && other.value > this->value;
     }
 };
 
@@ -108,3 +119,5 @@ std::unordered_map<std::string, Token *> operators = {
     {":", new Token(":", TokenType::OPERATOR_TYPE)},
     {";", new Token(";", TokenType::END_EXPR)},
 };
+
+#endif

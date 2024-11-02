@@ -1,10 +1,7 @@
-#ifndef _base
-#include "../types/Base.cpp"
-#endif
-#ifndef _token
-#include "../types/Token.cpp"
-#endif
+#ifndef _scanner
 #define _scanner
+#include "../types/Base.cpp"
+#include "../types/Token.cpp"
 
 class LexicalScanner
 {
@@ -26,3 +23,4 @@ private:
     bool reloadBuffer();
     void passBlanks();
 };
+#endif

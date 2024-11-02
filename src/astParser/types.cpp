@@ -1,14 +1,11 @@
-#ifndef base
-#include "../types/Base.cpp"
-#endif
-#ifndef _token
-#include "../types/Token.cpp"
-#endif
+#ifndef _parser_types
 #define _parser_types
+#include "../types/Base.cpp"
+#include "../types/Token.cpp"
 
 namespace Var
 {
-    enum Type
+    enum class Type
     {
         BYTE,
         CHAR,
@@ -18,7 +15,15 @@ namespace Var
         BOOLEAN,
     };
 
-    std::map<std::string, Type> tokenToType = {
+    std::unordered_map<Type, int> typeSizeMap = {
+        {Type::BYTE, 8},
+        {Type::CHAR, 8},
+        {Type::SHORT, 16},
+        {Type::INT, 32},
+        {Type::LONG, 64},
+    };
+
+    std::unordered_map<std::string, Type> tokenToType = {
         {"byte", Type::BYTE},
         {"char", Type::CHAR},
         {"short", Type::SHORT},
@@ -26,13 +31,6 @@ namespace Var
         {"long", Type::CHAR},
     };
 
-    std::map<Type, int> typeSizeMap = {
-        {Type::BYTE, 8},
-        {Type::CHAR, 8},
-        {Type::SHORT, 16},
-        {Type::INT, 32},
-        {Type::LONG, 64},
-    };
 
     Type getExprType(Type left, Type right)
     {
@@ -61,24 +59,23 @@ namespace Node
     struct AtomNode;
     struct TypeDef;
 
-    enum StatementType
+    enum class StatementType
     {
         IF,
         WHILE,
         FOR,
         VAR_DEF,
         ASSIGN,
-        FUNCCALL,
     };
 
-    enum ExprNodeType
+    enum class ExprNodeType
     {
         EXPR,
         OPERATOR,
         ATOM,
     };
 
-    enum AtomNodeType
+    enum class AtomNodeType
     {
         CONSTANT,
         VARIABLE,
@@ -274,3 +271,5 @@ namespace Node
         Var::Type type;
     };
 }
+
+#endif

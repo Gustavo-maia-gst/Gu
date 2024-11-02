@@ -1,6 +1,5 @@
 #include "AstParser.h"
 
-
 namespace Order
 {
     std::unordered_map<int, std::unordered_map<TokenType, std::function<Node::ExprNode *(AstParser *, Node::ExprNode *)>>> precedenceOrderMapper = {
@@ -298,8 +297,6 @@ namespace Order
                   }},
              }},
     };
-
-    const int MAX_PRECEDENCE_LEVEL = 11;
 }
 
 AstParser::AstParser(LexicalScanner *sc)
@@ -323,6 +320,7 @@ Node::ProgramNode *AstParser::parseProgram()
         switch (token->type)
         {
         case TokenType::FUNC:
+        {
             auto funcDef = this->parseFunctionDef();
             node->funcDefs[*(funcDef->identifier)] = funcDef;
             if (funcDef->identifier->value == "main")
@@ -332,10 +330,13 @@ Node::ProgramNode *AstParser::parseProgram()
                 node->main_func = funcDef;
             }
             break;
+        }
         case TokenType::VAR:
+        {
             auto varDef = this->parseVarDef();
             node->varsDefs[*(varDef->identifier)] = varDef;
             break;
+        }
         default:
             break;
         }
@@ -373,9 +374,10 @@ Node::VariableDef *AstParser::parseVarDef()
     }
 
     sintax_error("expecting assignment or semicolon, got " + next->value);
+    return nullptr;
 }
 
-Node::ExprNode *AstParser::parseExpr(int level = Order::MAX_PRECEDENCE_LEVEL)
+Node::ExprNode *AstParser::parseExpr(int level)
 {
     if (level < 0)
         compile_error("Error parsing expression");
@@ -393,6 +395,41 @@ Node::ExprNode *AstParser::parseExpr(int level = Order::MAX_PRECEDENCE_LEVEL)
 
     auto handler = levelMapper[op->type];
     return handler(this, left);
+}
+
+Node::BodyDef *AstParser::parseBody()
+{
+    return nullptr;
+}
+
+Node::StatementDef *AstParser::parseStatement()
+{
+    return nullptr;
+}
+
+Node::ForDef *AstParser::parseFor()
+{
+    return nullptr;
+}
+
+Node::WhileDef *AstParser::parseWhile()
+{
+    return nullptr;
+}
+
+Node::IfDef *AstParser::parseIf()
+{
+    return nullptr;
+}
+
+Node::FunctionDef *AstParser::parseFunctionDef()
+{
+    return nullptr;
+}
+
+Node::AssignDef *AstParser::parseAssign()
+{
+    return nullptr;
 }
 
 Node::AtomNode *AstParser::parseAtom()
@@ -414,6 +451,7 @@ Node::AtomNode *AstParser::parseAtom()
     switch (token->type)
     {
     case TokenType::IDENTIFIER:
+    {
         auto refFunc = this->context->funcDefs[*token];
         auto refVar = this->context->varsDefs[*token];
         if (refVar)
@@ -423,7 +461,9 @@ Node::AtomNode *AstParser::parseAtom()
 
         sintax_error("Unresolved identifier " + token->value);
         break;
+    }
     case TokenType::NUMBER:
+    {
         auto numberNode = new Node::ConstantNode;
         numberNode->nodeType = Node::ExprNodeType::ATOM;
         numberNode->atomType = Node::AtomNodeType::CONSTANT;
@@ -431,19 +471,34 @@ Node::AtomNode *AstParser::parseAtom()
         numberNode->value = token;
         return numberNode;
         break;
+    }
     case TokenType::CHAR:
+    {
         auto charNode = new Node::ConstantNode;
         charNode->nodeType = Node::ExprNodeType::ATOM;
         charNode->atomType = Node::AtomNodeType::CONSTANT;
         charNode->exprType = Var::Type::CHAR;
         charNode->value = token;
         return charNode;
+    }
     case TokenType::STRING:
+    {
         compile_error("Not implemented");
+    }
     default:
         break;
     }
 
     compile_error("Expecting atom, received " + token->value);
+    return nullptr;
+}
+
+Node::VariableNode *AstParser::parseVarRef(Node::VariableDef *varDef)
+{
+    return nullptr;
+}
+
+Node::FuncCall *AstParser::parseFuncCall(Node::FunctionDef *funcDef)
+{
     return nullptr;
 }

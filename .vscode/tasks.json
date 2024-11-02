@@ -9,6 +9,7 @@
                 "-g",  // Flag para depuração
                 "src/main.cpp",
                 "src/lexicalScanner/LexicalScanner.cpp",
+                "src/astParser/AstParser.cpp",
             ],
             "group": {
                 "kind": "build",

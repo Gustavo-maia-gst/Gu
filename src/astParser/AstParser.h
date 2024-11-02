@@ -1,10 +1,12 @@
-#ifndef _parser_types
-#include "types.cpp"
-#endif
-#ifndef _scanner
-#include "../lexicalScanner/LexicalScanner.h"
-#endif
+#ifndef _parser
 #define _parser
+#include "types.cpp"
+#include "../lexicalScanner/LexicalScanner.h"
+
+namespace Order
+{
+    extern int MAX_PRECEDENCE_LEVEL;
+}
 
 class AstParser
 {
@@ -30,3 +32,5 @@ private:
     Node::VariableNode *parseVarRef(Node::VariableDef *varDef);
     Node::FuncCall *parseFuncCall(Node::FunctionDef *funcDef);
 };
+
+#endif
