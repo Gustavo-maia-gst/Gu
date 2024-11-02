@@ -16,7 +16,7 @@ public:
 
 private:
     LexicalScanner *sc;
-    Node::ProgramNode *context; 
+    Node::ProgramNode *context;
 
     Node::BodyDef *parseBody();
     Node::StatementDef *parseStatement();
@@ -27,4 +27,6 @@ private:
     Node::AssignDef *parseAssign();
     Node::VariableDef *parseVarDef();
     Node::AtomNode *parseAtom();
+    Node::VariableNode *parseVarRef(Node::VariableDef *varDef);
+    Node::FuncCall *parseFuncCall(Node::FunctionDef *funcDef);
 };

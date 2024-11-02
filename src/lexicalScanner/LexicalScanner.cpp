@@ -21,16 +21,16 @@ void LexicalScanner::match(std::string s)
     sintax_error("expected: " + s + ", got: " + toMatch);
 }
 
-void LexicalScanner::expect(TokenType type, std::string description) 
+void LexicalScanner::expect(TokenType type, std::string description)
 {
-    Token* token = this->get();
+    Token *token = this->get();
     if (token->type != type)
         sintax_error("expecting " + description + ", got " + token->value);
 }
 
-Token *LexicalScanner::get_expected(TokenType type, std::string description) 
+Token *LexicalScanner::get_expected(TokenType type, std::string description)
 {
-    Token* token = this->get();
+    Token *token = this->get();
     if (!token)
         sintax_error("Unexpected EOF when expecting " + description);
     if (token->type != type)
