@@ -1,38 +1,27 @@
 #ifndef _parser_types
 #define _parser_types
-#include "../types/Base.cpp"
-#include "../types/Token.cpp"
+#include "AstParser.h"
 
 namespace Var
 {
-    enum class Type
-    {
-        BYTE,
-        CHAR,
-        SHORT,
-        INT,
-        LONG,
-        BOOLEAN,
+    std::unordered_map<Var::Type, int> Var::typeSizeMap = {
+        {Var::Type::BYTE, 8},
+        {Var::Type::CHAR, 8},
+        {Var::Type::SHORT, 16},
+        {Var::Type::INT, 32},
+        {Var::Type::LONG, 64},
     };
 
-    std::unordered_map<Type, int> typeSizeMap = {
-        {Type::BYTE, 8},
-        {Type::CHAR, 8},
-        {Type::SHORT, 16},
-        {Type::INT, 32},
-        {Type::LONG, 64},
+    std::unordered_map<std::string, Var::Type> Var::tokenToType = {
+        {"byte", Var::Type::BYTE},
+        {"char", Var::Type::CHAR},
+        {"short", Var::Type::SHORT},
+        {"int", Var::Type::INT},
+        {"long", Var::Type::LONG},
     };
 
-    std::unordered_map<std::string, Type> tokenToType = {
-        {"byte", Type::BYTE},
-        {"char", Type::CHAR},
-        {"short", Type::SHORT},
-        {"int", Type::CHAR},
-        {"long", Type::CHAR},
-    };
-
-
-    Type getExprType(Type left, Type right)
+    // Mantenha a implementação da função
+    Var::Type Var::getExprType(Var::Type left, Var::Type right)
     {
         int leftSize = typeSizeMap[left];
         int rightSize = typeSizeMap[right];
@@ -45,44 +34,6 @@ namespace Var
 
 namespace Node
 {
-    struct FunctionDef;
-    struct VariableDef;
-    struct BodyDef;
-    struct IfDef;
-    struct WhileDefj;
-    struct ForDef;
-    struct StatementDef;
-    struct AssignDef;
-    struct ExprNode;
-    struct OperatorNode;
-    struct VariableNode;
-    struct AtomNode;
-    struct TypeDef;
-
-    enum class StatementType
-    {
-        IF,
-        WHILE,
-        FOR,
-        VAR_DEF,
-        ASSIGN,
-    };
-
-    enum class ExprNodeType
-    {
-        EXPR,
-        OPERATOR,
-        ATOM,
-    };
-
-    enum class AtomNodeType
-    {
-        CONSTANT,
-        VARIABLE,
-        FUNCCALL,
-        EXPR
-    };
-
     struct ProgramNode
     {
         std::map<Token, FunctionDef *> funcDefs;

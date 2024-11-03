@@ -3,7 +3,7 @@
 LexicalScanner::LexicalScanner(std::string filename)
 {
     std::ifstream *file = new std::ifstream(filename);
-    if (file == nullptr)
+    if (!file->is_open())
         compile_error("File could not be opened");
     this->file = file;
 }
@@ -39,8 +39,25 @@ Token *LexicalScanner::get_expected(TokenType type, std::string description)
     return token;
 }
 
+void LexicalScanner::unget(Token* token)
+{
+    if (this->ungetted)
+    {
+        std::cerr << "Ungetted two tokens" << std::endl;
+        exit(1);
+    }
+    this->ungetted = token;
+}
+
 Token *LexicalScanner::get()
 {
+    if (this->ungetted)
+    {
+        Token* token = this->ungetted;
+        this->ungetted = nullptr;
+        return token;
+    }
+
     std::string value = getName();
     if (value.empty())
         return nullptr;
@@ -63,7 +80,10 @@ Token *LexicalScanner::get()
         return new Token(value, TokenType::IDENTIFIER);
     }
 
-    throw new std::exception();
+    if (!value.empty())
+        return new Token(value, TokenType::ANY);
+    
+    return nullptr;
 }
 
 std::string LexicalScanner::getName()

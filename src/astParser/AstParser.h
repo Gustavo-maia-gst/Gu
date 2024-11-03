@@ -1,11 +1,53 @@
 #ifndef _parser
 #define _parser
-#include "types.cpp"
 #include "../lexicalScanner/LexicalScanner.h"
 
 namespace Order
 {
-    extern int MAX_PRECEDENCE_LEVEL;
+    const int MAX_PRECEDENCE_LEVEL = 11;
+}
+
+namespace Node
+{
+    struct ProgramNode;
+    struct FunctionDef;
+    struct VariableDef;
+    struct BodyDef;
+    struct IfDef;
+    struct WhileDef;
+    struct ForDef;
+    struct StatementDef;
+    struct AssignDef;
+    struct ExprNode;
+    struct OperatorNode;
+    struct VariableNode;
+    struct AtomNode;
+    struct TypeDef;
+    struct FuncCall;
+
+    enum class StatementType
+    {
+        IF,
+        WHILE,
+        FOR,
+        VAR_DEF,
+        ASSIGN,
+    };
+
+    enum class ExprNodeType
+    {
+        EXPR,
+        OPERATOR,
+        ATOM,
+    };
+
+    enum class AtomNodeType
+    {
+        CONSTANT,
+        VARIABLE,
+        FUNCCALL,
+        EXPR
+    };
 }
 
 class AstParser
@@ -32,5 +74,23 @@ private:
     Node::VariableNode *parseVarRef(Node::VariableDef *varDef);
     Node::FuncCall *parseFuncCall(Node::FunctionDef *funcDef);
 };
+
+namespace Var
+{
+    enum class Type
+    {
+        BYTE,
+        CHAR,
+        SHORT,
+        INT,
+        LONG,
+        BOOLEAN,
+    };
+
+    extern std::unordered_map<Type, int> typeSizeMap;
+    extern std::unordered_map<std::string, Type> tokenToType;
+
+    Type getExprType(Type left, Type right);
+}
 
 #endif
