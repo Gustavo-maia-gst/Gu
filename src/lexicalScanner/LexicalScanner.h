@@ -8,7 +8,6 @@ class LexicalScanner
 public:
     LexicalScanner(std::string path);
     ~LexicalScanner();
-    void match(std::string s);
     void expect(TokenType type, std::string description);
     Token *get();
     Token *get_expected(TokenType type, std::string description);
@@ -20,9 +19,13 @@ private:
     std::queue<char> buff;
     Token* ungetted;
 
-    std::string getName();
     char getChar();
     bool reloadBuffer();
     void passBlanks();
+    Token* getToken();
+    Token* getTokenIndentifier();
+    Token* getTokenNumber();
+    Token* getTokenOperator();
+    bool isOperator(char c);
 };
 #endif

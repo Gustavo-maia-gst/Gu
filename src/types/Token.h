@@ -13,14 +13,21 @@ enum class TokenType
     RETURN,
     FUNC,
     VAR,
+    LET,
     NUMBER,
     STRING,
     CHAR,
     TYPE,
     BREAK,
     END_EXPR,
-    ANY,
-
+    OPEN_PAR,
+    CLOSE_PAR,
+    OPEN_BRACKETS,
+    CLOSE_BRACKETS,
+    OPEN_BRACES,
+    CLOSE_BRACES,
+    TYPE_INDICATOR,
+    COMMA,
 
     OPERATOR_EQ,
     OPERATOR_NEQ,
@@ -42,7 +49,6 @@ enum class TokenType
     OPERATOR_DIV,
     OPERATOR_MOD,
     OPERATOR_ASSIGN,
-    OPERATOR_TYPE,
 };
 
 class Token
@@ -57,19 +63,24 @@ public:
         this->type = type;
     }
 
-    bool operator==(const Token &other) const
+    inline bool operator==(const Token &other) const
     {
         return other.type == this->type && other.value == this->value;
     }
 
-    bool operator<(const Token &other) const
+    inline bool operator<(const Token &other) const
     {
         return other.type == this->type && other.value < this->value;
     }
 
-    bool operator>(const Token &other) const
+    inline bool operator>(const Token &other) const
     {
         return other.type == this->type && other.value > this->value;
+    }
+
+    inline Token* copy()
+    {
+        return new Token(this->value, this->type);
     }
 };
 
@@ -87,5 +98,7 @@ namespace std
 
 extern std::unordered_map<std::string, Token *> keywords;
 extern std::unordered_map<std::string, Token *> operators;
+extern std::unordered_map<char, Token *> grammarChars;
+extern std::unordered_map<TokenType, std::string> reverseOperators;
 
 #endif

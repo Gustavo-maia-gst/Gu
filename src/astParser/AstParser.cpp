@@ -16,6 +16,7 @@ namespace Var
         {"short", Var::Type::SHORT},
         {"int", Var::Type::INT},
         {"long", Var::Type::LONG},
+        {"void", Var::Type::VOID},
     };
 
     // Mantenha a implementação da função
@@ -34,8 +35,8 @@ namespace Node
 {
     struct ProgramNode
     {
-        std::map<Token, FunctionDef *> funcDefs;
-        std::map<Token, VariableDef *> varsDefs;
+        std::unordered_map<Token, FunctionDef *> funcDefs;
+        std::unordered_map<Token, VariableDef *> varsDefs;
 
         FunctionDef *main_func;
 
@@ -53,7 +54,10 @@ namespace Node
     {
         Token *identifier;
         std::vector<VariableDef *> args;
+        std::unordered_map<Token, VariableDef *> localVars;
+
         BodyDef *body;
+        TypeDef *retType;
 
         ~FunctionDef()
         {
@@ -66,13 +70,10 @@ namespace Node
 
     struct BodyDef
     {
-        std::map<Token, VariableDef *> varsDefs;
         std::vector<StatementDef *> statements;
 
         ~BodyDef()
         {
-            for (auto &[_, var] : varsDefs)
-                delete var;
             for (auto &statement : statements)
                 delete statement;
         }
@@ -81,6 +82,26 @@ namespace Node
     struct StatementDef
     {
         StatementType statementType;
+    };
+
+    struct ExprStatementDef : StatementDef
+    {
+        ExprNode *expr;
+
+        ~ExprStatementDef()
+        {
+            delete expr;
+        }
+    };
+
+    struct ReturnDef : StatementDef
+    {
+        ExprNode *expr;
+
+        ~ReturnDef()
+        {
+            delete expr;
+        }
     };
 
     struct IfDef : StatementDef
@@ -219,6 +240,150 @@ namespace Node
     {
         Var::Type type;
     };
+}
+
+namespace std
+{
+    string to_string(const Node::ProgramNode *node)
+    {
+        string program = "";
+
+        for (auto [_, varDef] : node->varsDefs)
+        {
+            program += to_string(varDef);
+            program += "\n";
+        }
+
+        for (auto [_, funcDef] : node->funcDefs)
+        {
+            program += to_string(funcDef);
+        }
+
+        program += "main()";
+        return program;
+    }
+
+    string to_string(const Node::FunctionDef *node)
+    {
+        string function = "def ";
+        function += node->identifier->value;
+        function += '(';
+        for (int i = 0; i < node->args.size(); i++)
+        {
+            function += node->args[i]->identifier->value;
+            if (i < node->args.size() - 1)
+                function += ", ";
+        }
+        function += "):\n";
+        function += to_string(node->body, 1);
+        return function;
+    }
+
+    string to_string(const Node::BodyDef *node, int level)
+    {
+        string block = "";
+        for (auto statement : node->statements)
+            block += to_string(statement, level) + "\n";
+        return block + '\n';
+    }
+
+    string to_string(const Node::StatementDef *node, int level)
+    {
+        switch (node->statementType)
+        {
+        case Node::StatementType::ASSIGN:
+            return to_string((Node::AssignDef *)node, level);
+        case Node::StatementType::BREAK:
+        {
+            string s = "";
+            while (level--)
+                s += "\t";
+            return s + "break";
+        }
+        case Node::StatementType::RETURN:
+        {
+            string s = "";
+            while (level--)
+                s += "\t";
+            return s + "return " + to_string(((Node::ReturnDef *)node)->expr);
+        }
+        case Node::StatementType::VAR_DEF:
+            return to_string((Node::VariableDef *)node, level);
+        case Node::StatementType::EXPR:
+        {
+            string s = "";
+            while (level--)
+                s += "\t";
+            return s + to_string((Node::ExprNode *)node);
+        }
+        default:
+            return "";
+        }
+    }
+
+    string to_string(const Node::VariableDef *node, int level)
+    {
+        string s = "";
+        while (level--)
+            s += "\t";
+        s += node->identifier->value;
+        if (node->value)
+            s += " = " + to_string((Node::ExprNode *)node->value);
+        else
+            s += " = None";
+        return s;
+    }
+
+    string to_string(const Node::AssignDef *node, int level)
+    {
+        string s = "";
+        while (level--)
+            s += "\t";
+        s += node->var->identifier->value + " = " + to_string((Node::ExprNode *)node->val);
+        return s + '\n';
+    }
+
+    string to_string(const Node::ExprNode *node)
+    {
+        switch (node->nodeType)
+        {
+        case Node::ExprNodeType::OPERATOR:
+            return to_string((Node::OperatorNode *)node);
+        case Node::ExprNodeType::ATOM:
+            return to_string((Node::AtomNode *)node);
+        default:
+            return "";
+        }
+    }
+
+    string to_string(const Node::OperatorNode *node)
+    {
+        return to_string(node->left) + " " + reverseOperators[node->op] + " " + to_string(node->right);
+    }
+
+    string to_string(const Node::AtomNode *node)
+    {
+        switch (node->atomType)
+        {
+        case Node::AtomNodeType::CONSTANT:
+            return ((Node::ConstantNode *)node)->value->value;
+        case Node::AtomNodeType::FUNCCALL:
+            return to_string((Node::FuncCall *)node);
+        case Node::AtomNodeType::VARIABLE:
+            return ((Node::VariableNode *)node)->var->identifier->value;
+        case Node::AtomNodeType::EXPR:
+            return "(" + to_string(((Node::ExprAtomNode *)node)->expr) + ")";
+        default:
+            return "";
+        }
+    }
+
+    string to_string(const Node::ForDef *node, int level) { return ""; }
+    string to_string(const Node::WhileDef *node, int level) { return ""; }
+    string to_string(const Node::VariableNode *node) { return ""; }
+    string to_string(const Node::TypeDef *node) { return ""; }
+    string to_string(const Node::FuncCall *node) { return ""; }
+    string to_string(const Node::IfDef *node, int level) { return ""; }
 }
 
 namespace Order
@@ -533,7 +698,7 @@ AstParser::~AstParser()
 Node::ProgramNode *AstParser::parseProgram()
 {
     auto node = new Node::ProgramNode;
-    this->context = node;
+    this->globalContext = node;
 
     Token *token;
     while ((token = this->sc->get()))
@@ -554,7 +719,7 @@ Node::ProgramNode *AstParser::parseProgram()
         }
         case TokenType::VAR:
         {
-            auto varDef = this->parseVarDef();
+            auto varDef = this->parseVarDef(node->varsDefs);
             node->varsDefs[*(varDef->identifier)] = varDef;
             break;
         }
@@ -569,33 +734,166 @@ Node::ProgramNode *AstParser::parseProgram()
     return node;
 }
 
-Node::VariableDef *AstParser::parseVarDef()
+Node::FunctionDef *AstParser::parseFunctionDef()
+{
+    auto node = new Node::FunctionDef;
+
+    node->identifier = this->sc->get_expected(TokenType::IDENTIFIER, "Identifier for function");
+
+    this->sc->expect(TokenType::OPEN_PAR, "(");
+
+    Token *next;
+    while ((next = this->sc->get())->type != TokenType::CLOSE_PAR)
+    {
+        this->sc->unget(next);
+        if (!node->args.empty())
+            this->sc->expect(TokenType::COMMA, ",");
+
+        auto arg = new Node::VariableDef;
+        arg->identifier = this->sc->get_expected(TokenType::IDENTIFIER, "identifier");
+        arg->statementType = Node::StatementType::VAR_DEF;
+
+        this->sc->expect(TokenType::TYPE_INDICATOR, ":");
+
+        arg->type = this->parseTypeDef();
+        node->args.push_back(arg);
+    }
+
+    this->sc->expect(TokenType::TYPE_INDICATOR, ":");
+
+    node->retType = this->parseTypeDef();
+
+    this->localContext = node;
+
+    node->body = this->parseBody();
+
+    bool hasAnyReturn = false;
+    for (auto &statement : node->body->statements)
+    {
+        if (statement->statementType == Node::StatementType::RETURN)
+        {
+            auto returnStatement = (Node::ReturnDef *)statement;
+            hasAnyReturn = true;
+            if (returnStatement->expr->exprType != node->retType->type)
+                compile_error("return type not compatible");
+        }
+    }
+
+    if (!hasAnyReturn && node->retType->type != Var::Type::VOID)
+        compile_error("Non void function reaches the end of control without returning");
+
+    this->localContext = nullptr;
+
+    return node;
+}
+
+Node::BodyDef *AstParser::parseBody()
+{
+    Token *token = this->sc->get();
+
+    auto node = new Node::BodyDef;
+
+    if (token->type != TokenType::OPEN_BRACES)
+    {
+        auto statement = this->parseStatement();
+        node->statements.push_back(statement);
+        return node;
+    }
+
+    while ((token = this->sc->get())->type != TokenType::CLOSE_BRACES)
+    {
+        this->sc->unget(token);
+        auto statement = this->parseStatement();
+        if (statement)
+            node->statements.push_back(statement);
+    }
+
+    return node;
+}
+
+Node::StatementDef *AstParser::parseStatement()
+{
+    auto token = this->sc->get();
+    switch (token->type)
+    {
+    case TokenType::FOR:
+    {
+        this->sc->unget(token);
+        return this->parseFor();
+    }
+    case TokenType::WHILE:
+    {
+        this->sc->unget(token);
+        return this->parseWhile();
+    }
+    case TokenType::VAR:
+    {
+        return this->parseVarDef(this->localContext->localVars);
+    }
+    case TokenType::BREAK:
+    {
+        this->sc->expect(TokenType::END_EXPR, "semicolon");
+        auto node = new Node::StatementDef;
+        node->statementType = Node::StatementType::BREAK;
+        return node;
+    }
+    case TokenType::RETURN:
+    {
+        auto node = new Node::ReturnDef;
+        node->expr = this->parseExpr();
+        node->statementType = Node::StatementType::RETURN;
+        this->sc->expect(TokenType::END_EXPR, "semicolon");
+        return node;
+    }
+    case TokenType::LET:
+    {
+        return this->parseAssign();
+    }
+    case TokenType::END_EXPR:
+    {
+        return nullptr;
+    }
+    default:
+    {
+        auto node = new Node::ExprStatementDef;
+        node->statementType = Node::StatementType::EXPR;
+        node->expr = this->parseExpr();
+
+        this->sc->expect(TokenType::END_EXPR, "semicolon");
+        return node;
+    }
+    }
+
+    return nullptr;
+}
+
+Node::VariableDef *AstParser::parseVarDef(std::unordered_map<Token, Node::VariableDef *> &context)
 {
     Token *ident = this->sc->get_expected(TokenType::IDENTIFIER, "identifier");
+    if (this->globalContext->varsDefs.find(*ident) != this->globalContext->varsDefs.end())
+        compile_error("Variable " + ident->value + "redefined");
 
-    this->sc->expect(TokenType::OPERATOR_TYPE, "type definition");
-
-    Token *type = this->sc->get_expected(TokenType::TYPE, "type");
-
-    Token *next = this->sc->get();
+    this->sc->expect(TokenType::TYPE_INDICATOR, "type definition");
 
     auto node = new Node::VariableDef;
     node->statementType = Node::StatementType::VAR_DEF;
     node->identifier = ident;
-    node->type = new Node::TypeDef{Var::tokenToType[type->value]};
+    node->type = this->parseTypeDef();
 
-    if (next->type == TokenType::END_EXPR)
-        return node;
+    Token *next = this->sc->get();
+
     if (next->type == TokenType::OPERATOR_ASSIGN)
     {
         auto expr = this->parseExpr();
-        this->sc->expect(TokenType::END_EXPR, "semicolon");
         node->value = expr;
-        return node;
     }
+    else
+        this->sc->unget(next);
 
-    sintax_error("expecting assignment or semicolon, got " + next->value);
-    return nullptr;
+    this->sc->expect(TokenType::END_EXPR, "semicolon");
+
+    context[*ident] = node;
+    return node;
 }
 
 Node::ExprNode *AstParser::parseExpr(int level)
@@ -609,7 +907,9 @@ Node::ExprNode *AstParser::parseExpr(int level)
     auto op = this->sc->get();
 
     auto levelMapper = Order::precedenceOrderMapper[level];
-    if (!op || levelMapper.find(op->type) == levelMapper.end())
+    bool handlerFound = levelMapper.find(op->type) != levelMapper.end();
+
+    if (!op || !handlerFound)
     {
         this->sc->unget(op);
         return left;
@@ -622,11 +922,11 @@ Node::ExprNode *AstParser::parseExpr(int level)
 Node::AtomNode *AstParser::parseAtom()
 {
     Token *token = this->sc->get();
-    if (this->sc->lookChar() == '(')
+
+    if (token->type == TokenType::OPEN_PAR)
     {
-        this->sc->match("(");
         auto expr = this->parseExpr();
-        this->sc->match(")");
+        this->sc->get_expected(TokenType::CLOSE_PAR, "closing parenteses");
         auto node = new Node::ExprAtomNode;
         node->nodeType = Node::ExprNodeType::ATOM;
         node->atomType = Node::AtomNodeType::EXPR;
@@ -639,10 +939,18 @@ Node::AtomNode *AstParser::parseAtom()
     {
     case TokenType::IDENTIFIER:
     {
-        auto refFunc = this->context->funcDefs[*token];
-        auto refVar = this->context->varsDefs[*token];
+        auto refFunc = this->getFunctionDef(token);
+        auto refVar = this->getVarDef(token);
+
         if (refVar)
-            return this->parseVarRef(refVar);
+        {
+            auto node = new Node::VariableNode;
+            node->nodeType = Node::ExprNodeType::ATOM;
+            node->atomType = Node::AtomNodeType::VARIABLE;
+            node->exprType = refVar->type->type;
+            node->var = refVar;
+            return node;
+        }
         if (refFunc)
             return this->parseFuncCall(refFunc);
 
@@ -680,16 +988,6 @@ Node::AtomNode *AstParser::parseAtom()
     return nullptr;
 }
 
-Node::BodyDef *AstParser::parseBody()
-{
-    return nullptr;
-}
-
-Node::StatementDef *AstParser::parseStatement()
-{
-    return nullptr;
-}
-
 Node::ForDef *AstParser::parseFor()
 {
     return nullptr;
@@ -705,22 +1003,56 @@ Node::IfDef *AstParser::parseIf()
     return nullptr;
 }
 
-Node::FunctionDef *AstParser::parseFunctionDef()
-{
-    return nullptr;
-}
-
 Node::AssignDef *AstParser::parseAssign()
 {
-    return nullptr;
-}
+    auto ident = this->sc->get();
+    auto varDef = this->getVarDef(ident);
+    if (!varDef)
+        compile_error("Unknown variable " + ident->value);
 
-Node::VariableNode *AstParser::parseVarRef(Node::VariableDef *varDef)
-{
-    return nullptr;
+    this->sc->expect(TokenType::OPERATOR_ASSIGN, "assign operator");
+
+    auto node = new Node::AssignDef;
+    node->var = varDef;
+    node->val = this->parseExpr();
+    node->statementType = Node::StatementType::ASSIGN;
+
+    this->sc->expect(TokenType::END_EXPR, "semicolon");
+
+    return node;
 }
 
 Node::FuncCall *AstParser::parseFuncCall(Node::FunctionDef *funcDef)
 {
     return nullptr;
+}
+
+Node::TypeDef *AstParser::parseTypeDef()
+{
+    auto tokenType = this->sc->get_expected(TokenType::TYPE, "type");
+    auto node = new Node::TypeDef;
+    node->type = Var::tokenToType[tokenType->value];
+    return node;
+}
+
+Node::VariableDef *AstParser::getVarDef(Token *ident)
+{
+    Node::VariableDef *varDef;
+
+    if (this->globalContext->varsDefs.find(*ident) != this->globalContext->varsDefs.end())
+        varDef = this->localContext->localVars[*ident];
+    if (this->localContext->localVars.find(*ident) != this->localContext->localVars.end())
+        varDef = this->localContext->localVars[*ident];
+
+    return varDef;
+}
+
+Node::FunctionDef *AstParser::getFunctionDef(Token *ident)
+{
+    Node::FunctionDef *funcDef;
+
+    if (this->globalContext->varsDefs.find(*ident) != this->globalContext->varsDefs.end())
+        funcDef = this->globalContext->funcDefs[*ident];
+
+    return funcDef;
 }

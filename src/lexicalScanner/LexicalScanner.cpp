@@ -13,19 +13,12 @@ LexicalScanner::~LexicalScanner()
     delete this->file;
 }
 
-void LexicalScanner::match(std::string s)
-{
-    std::string toMatch = getName();
-    if (s == toMatch)
-        return;
-    sintax_error("expected: " + s + ", got: " + toMatch);
-}
-
 void LexicalScanner::expect(TokenType type, std::string description)
 {
     Token *token = this->get();
     if (token->type != type)
         sintax_error("expecting " + description + ", got " + token->value);
+    delete token;
 }
 
 Token *LexicalScanner::get_expected(TokenType type, std::string description)
@@ -39,7 +32,7 @@ Token *LexicalScanner::get_expected(TokenType type, std::string description)
     return token;
 }
 
-void LexicalScanner::unget(Token* token)
+void LexicalScanner::unget(Token *token)
 {
     if (this->ungetted)
     {
@@ -53,46 +46,76 @@ Token *LexicalScanner::get()
 {
     if (this->ungetted)
     {
-        Token* token = this->ungetted;
+        Token *token = this->ungetted;
         this->ungetted = nullptr;
         return token;
     }
 
-    std::string value = getName();
-    if (value.empty())
-        return nullptr;
-    char c = value[0];
+    return getToken();
+}
 
-    if (keywords.find(value) != keywords.end())
+Token *LexicalScanner::getToken()
+{
+    passBlanks();
+
+    if (isalpha(lookChar()) || lookChar() == '_')
+        return getTokenIndentifier();
+    if (isdigit(lookChar()))
+        return getTokenNumber();
+    if (isOperator(lookChar()))
+        return getTokenOperator();
+    if (lookChar())
     {
-        return keywords[value];
-    }
-    if (operators.find(value) != operators.end())
-    {
-        return operators[value];
-    }
-    if (std::isdigit(c))
-    {
-        return new Token(value, TokenType::NUMBER);
-    }
-    if (std::isalpha(c) || c == '_')
-    {
-        return new Token(value, TokenType::IDENTIFIER);
+        char c = getChar();
+        auto token = grammarChars[c];
+        if (!token)
+            compile_error("Unexpected character " + c);
+        return token->copy();
     }
 
-    if (!value.empty())
-        return new Token(value, TokenType::ANY);
-    
     return nullptr;
 }
 
-std::string LexicalScanner::getName()
+Token *LexicalScanner::getTokenIndentifier()
 {
-    passBlanks();
     std::string s = "";
-    while (lookChar() && !std::isspace(lookChar()))
+    while (isalnum((lookChar())) || lookChar() == '_')
         s += getChar();
-    return s;
+    if (s.empty())
+        return nullptr;
+
+    if (keywords.find(s) != keywords.end())
+        return keywords[s]->copy();
+
+    return new Token(s, TokenType::IDENTIFIER);
+}
+
+Token *LexicalScanner::getTokenNumber()
+{
+    std::string s = "";
+    while (isdigit(lookChar()))
+        s += getChar();
+    if (s.empty())
+        return nullptr;
+    return new Token(s, TokenType::NUMBER);
+}
+
+Token *LexicalScanner::getTokenOperator()
+{
+    std::string s = "";
+    while (isOperator(lookChar()))
+        s += getChar();
+
+    auto token = operators[s];
+    if (!token)
+        compile_error("Unexpected value " + s);
+    return token->copy();
+}
+
+bool LexicalScanner::isOperator(char c)
+{
+    static const std::unordered_set<char> operators = {'+', '-', '*', '/', '%', '=', '<', '>', '&', '|', '^', '!', '~'};
+    return operators.find(c) != operators.end();
 }
 
 char LexicalScanner::getChar()

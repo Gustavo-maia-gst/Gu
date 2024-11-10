@@ -1,6 +1,5 @@
 #include "Token.h"
 
-// Definições das variáveis
 std::unordered_map<std::string, Token *> keywords = {
     {"if", new Token("if", TokenType::IF)},
     {"for", new Token("for", TokenType::FOR)},
@@ -9,11 +8,24 @@ std::unordered_map<std::string, Token *> keywords = {
     {"break", new Token("break", TokenType::BREAK)},
     {"func", new Token("func", TokenType::FUNC)},
     {"var", new Token("var", TokenType::VAR)},
+    {"let", new Token("let", TokenType::LET)},
     {"byte", new Token("byte", TokenType::TYPE)},
     {"char", new Token("char", TokenType::TYPE)},
     {"short", new Token("short", TokenType::TYPE)},
     {"int", new Token("int", TokenType::TYPE)},
     {"long", new Token("long", TokenType::TYPE)},
+};
+
+std::unordered_map<char, Token *> grammarChars = {
+    {'(', new Token("(", TokenType::OPEN_PAR)},
+    {')', new Token(")", TokenType::CLOSE_PAR)},
+    {'[', new Token("[", TokenType::OPEN_BRACKETS)},
+    {']', new Token("]", TokenType::CLOSE_BRACKETS)},
+    {'{', new Token("{", TokenType::OPEN_BRACES)},
+    {'}', new Token("}", TokenType::CLOSE_BRACES)},
+    {':', new Token(":", TokenType::TYPE_INDICATOR)},
+    {';', new Token(";", TokenType::END_EXPR)},
+    {',', new Token(",", TokenType::COMMA)},
 };
 
 std::unordered_map<std::string, Token *> operators = {
@@ -37,6 +49,27 @@ std::unordered_map<std::string, Token *> operators = {
     {"%", new Token("%", TokenType::OPERATOR_MOD)},
     {"/", new Token("/", TokenType::OPERATOR_DIV)},
     {"=", new Token("=", TokenType::OPERATOR_ASSIGN)},
-    {":", new Token(":", TokenType::OPERATOR_TYPE)},
-    {";", new Token(";", TokenType::END_EXPR)},
+};
+
+std::unordered_map<TokenType, std::string> reverseOperators = {
+    {TokenType::OPERATOR_EQ, "=="},
+    {TokenType::OPERATOR_GTE, ">="},
+    {TokenType::OPERATOR_LTE, "<="},
+    {TokenType::OPERATOR_LT, "<"},
+    {TokenType::OPERATOR_GT, ">"},
+    {TokenType::OPERATOR_NEQ, "!="},
+    {TokenType::OPERATOR_LOG_AND, "&&"},
+    {TokenType::OPERATOR_LOG_OR, "||"},
+    {TokenType::OPERATOR_BIN_AND, "&"},
+    {TokenType::OPERATOR_BIN_OR, "|"},
+    {TokenType::OPERATOR_BIN_XOR, "^"},
+    {TokenType::OPERATOR_BIN_LSHIFT, ">>"},
+    {TokenType::OPERATOR_BIN_RSHIFT, "<<"},
+    {TokenType::OPERATOR_NEG, "!"},
+    {TokenType::OPERATOR_PLUS, "+"},
+    {TokenType::OPERATOR_MINUS, "-"},
+    {TokenType::OPERATOR_MULT, "*"},
+    {TokenType::OPERATOR_MOD, "%"},
+    {TokenType::OPERATOR_DIV, "/"},
+    {TokenType::OPERATOR_ASSIGN, "="},
 };
