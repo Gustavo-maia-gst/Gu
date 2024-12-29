@@ -1,0 +1,23 @@
+func fact(x: int) -> int {
+    if x > 0b01 {
+        return x * fact(x-1);
+    }
+
+    return 1;
+}
+
+func main() -> int {
+    var x: int = 0xa1, y: int, c: int;
+    y = fact(x);
+    
+    var s = "Gustavo";
+    var c = 'X';
+    var s = "\"Lindo\"";
+    var t = '';
+
+    while y > 0 {
+        c = y % 10;
+        write(&c, 1, 1);
+        y = y / 10;
+    }
+}
