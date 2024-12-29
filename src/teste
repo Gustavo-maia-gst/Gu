@@ -1,23 +1,20 @@
-func fact(x: int) -> int {
-    if x > 0b01 {
-        return x * fact(x-1);
-    }
-
-    return 1;
+struct Pessoa {
+    nome: char[12];
+    idade: int;
+    mae: Pessoa*;
 }
 
 func main() -> int {
-    var x: int = 0xa1, y: int, c: int;
-    y = fact(x);
-    
-    var s = "Gustavo";
-    var c = 'X';
-    var s = "\"Lindo\"";
-    var t = '';
+    var m: Pessoa;
+    m.nome = "Edivania";
+    m.idade = 40;
 
-    while y > 0 {
-        c = y % 10;
-        write(&c, 1, 1);
-        y = y / 10;
-    }
+    var p: Pessoa;
+    p.nome = "Gustavo";
+    p.idade = 19;
+    p.mae = m;
+
+    print(p.nome[0]);
+
+    return;
 }

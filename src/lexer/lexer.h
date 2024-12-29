@@ -39,7 +39,8 @@ public:
   void setTypeMapper(std::unordered_map<std::string, int> *tokenMapper);
 
   const Token &look();
-  const Token &next();
+  const Token &get();
+  void unget();
 
 private:
   Lexer();
@@ -49,6 +50,8 @@ private:
   std::istream *stream;
 
   Token current;
+  bool ungetted = false;
+
   int line = 1;
   int column = 1;
 

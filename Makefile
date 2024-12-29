@@ -6,22 +6,24 @@ WARN    = -Wall
 CCFLAGS = $(DEBUG) $(OPT) $(WARN)
 
 FILES = src/main.cpp \
-        src/lexicalScanner/LexicalScanner.cpp \
-        src/astParser/AstParser.cpp \
-		src/astParser/types.cpp
+        src/lexer/lexer.cpp \
+        src/parser/parser.cpp \
+		src/parser/ast/ast.cpp
 
-BUILD_DIR = build
-OBJS = $(FILES:.cpp=.o)
+all: build | $(FILES)
+	rm build/obj/*
 
-all: $(BUILD_DIR) | $(OBJS)
-	$(CC) $(CCFLAGS) $(OBJS) -o build/$(TARGET)
+	for file in $(FILES); do \
+		filename=$${file%.*}; \
+		filename=$${filename//\//.}; \
+		$(CC) -c $(CCFLAGS) $$file -o build/obj/"$$filename".o; \
+	done
 
-$(BUILD_DIR):
-	mkdir -p $(BUILD_DIR)
+	$(CC) $(CCFLAGS) build/obj/*.o -o build/bin/$(TARGET)
 
-%.o: %.cpp
-	$(CC) $(CCFLAGS) -c $< -o build/$(@F)
+build:
+	mkdir -p "build/obj"
+	mkdir -p "build/bin"
 
 clean:
-	echo $(OBJS)
-	rm build/*.o
+	rm -rf build

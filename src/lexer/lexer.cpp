@@ -29,20 +29,31 @@ Lexer *Lexer::fromStream(std::istream *stream) {
   return sc;
 }
 
-void Lexer::setTypeMapper(
-    std::unordered_map<std::string, int> *tokenMapper) {
+void Lexer::setTypeMapper(std::unordered_map<std::string, int> *tokenMapper) {
   this->tokenMapper = tokenMapper;
 }
 
 const Token &Lexer::look() {
   if (current.raw.empty()) {
-    return next();
+    return get();
   }
 
   return current;
 }
 
-const Token &Lexer::next() {
+void Lexer::unget() {
+  if (ungetted) {
+    throw new std::runtime_error("Ungetted two tokens");
+  }
+  ungetted = true;
+}
+
+const Token &Lexer::get() {
+  if (ungetted) {
+    ungetted = false;
+    return current;
+  }
+
   passBlanks();
 
   char nextChar = lookChar();
@@ -77,7 +88,10 @@ void Lexer::nextToken_Indentifier() {
     s += getChar();
 
   current.raw = s;
-  current.mappedType = tokenMapper ? (*tokenMapper)[s] : 0;
+  current.mappedType =
+      tokenMapper ? (*tokenMapper)[s] ? (*tokenMapper)[s]
+                                      : (*tokenMapper)["_LEXER__IDENTIFIER__"]
+                  : 0;
   current.rawType = TokenType::NAME;
 }
 
@@ -93,12 +107,13 @@ void Lexer::nextToken_String() {
 
     s += c;
   }
-  if (!lookChar()) error("Unexpected EOF reading string");
+  if (!lookChar())
+    error("Unexpected EOF reading string");
   getChar();
 
   current.raw = s;
   current.rawType = TokenType::STRING;
-  current.mappedType = tokenMapper ? (*tokenMapper)["STRING"] : 0;
+  current.mappedType = tokenMapper ? (*tokenMapper)["_LEXER__STRING__"] : 0;
 }
 
 void Lexer::nextToken_Char() {
@@ -111,11 +126,12 @@ void Lexer::nextToken_Char() {
     s += getChar();
   }
 
-  if (getChar() != '\'') error("Unexpected value reading char");
+  if (getChar() != '\'')
+    error("Unexpected value reading char");
 
   current.raw = s;
   current.rawType = TokenType::CHAR;
-  current.mappedType = tokenMapper ? (*tokenMapper)["CHAR"] : 0;
+  current.mappedType = tokenMapper ? (*tokenMapper)["_LEXER__CHAR__"] : 0;
 }
 
 void Lexer::nextToken_Number() {
@@ -146,7 +162,7 @@ void Lexer::nextToken_Number() {
 
   current.raw = s;
   current.rawType = TokenType::NUMBER;
-  current.mappedType = tokenMapper ? (*tokenMapper)["NUMBER"] : 0;
+  current.mappedType = tokenMapper ? (*tokenMapper)["_LEXER__NUMBER__"] : 0;
 }
 
 void Lexer::nextToken_General() {
@@ -198,7 +214,8 @@ void inline Lexer::error(std::string msg) {
 void inline Lexer::passBlanks() {
   while (std::isspace(lookChar())) {
     if (getChar() == '\n') {
-      line++; column = 1;
+      line++;
+      column = 1;
     }
   }
 }
