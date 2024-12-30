@@ -2,10 +2,14 @@
 #include <cctype>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 
 // These characters are single-chars token
 const std::unordered_set<char> grammarChars = {'(', ')', '[', ']', '{',
                                                '}', ';', ',', '.'};
+const std::unordered_set<std::string> reservedWords = {
+    "_LEXER__CHAR__", "_LEXER__STRING__", "_LEXER__NUMBER__",
+    "_LEXER__IDENTIFIER__"};
 
 Lexer::Lexer() {}
 
@@ -86,6 +90,9 @@ void Lexer::nextToken_Indentifier() {
   std::string s = "";
   while (isalnum((lookChar())) || lookChar() == '_')
     s += getChar();
+
+  if (reservedWords.find(s) != reservedWords.end())
+    error("Use of reserved word: " + s);
 
   current.raw = s;
   current.mappedType =

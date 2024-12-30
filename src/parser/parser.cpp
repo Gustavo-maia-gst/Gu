@@ -7,9 +7,10 @@
 #include <unordered_map>
 #include <unordered_set>
 
-std::unordered_map<std::string, int> typeMapper = {
+std::unordered_map<std::string, int> baseTypeMapper = {
     {"func", ProgramTokenType::FUNC},
     {"var", ProgramTokenType::VAR},
+    {"const", ProgramTokenType::CONST},
     {"if", ProgramTokenType::IF},
     {"while", ProgramTokenType::WHILE},
     {"for", ProgramTokenType::FOR},
@@ -101,7 +102,7 @@ std::unordered_map<std::string, std::string> assignTransformMap{
 
 AstParser::AstParser(Lexer *lexer) {
   this->lexer = lexer;
-  auto typeMapperRef = &typeMapper;
+  auto typeMapperRef = &baseTypeMapper;
   lexer->setTypeMapper(typeMapperRef);
 }
 
@@ -109,15 +110,15 @@ AstParser::AstParser(Lexer *lexer) {
   PROGRAM: (FUNCTION | VAR_DEF)*
 */
 ProgramNode *AstParser::parseProgram() {
-  auto node = new ProgramNode;
+  auto node = new ProgramNode(currLine(), currCol());
 
   while (lexer->get().rawType != TokenType::END_OF_INPUT) {
     auto current = lexer->look();
 
     if (current.mappedType == FUNC)
       parseFunction(node);
-    else if (current.mappedType == VAR)
-      parseVarDef(node);
+    else if (current.mappedType == VAR || current.mappedType == CONST)
+      parseVarDef(node, current.mappedType == CONST);
     else if (current.mappedType == STRUCT)
       parseStruct(node);
     else
@@ -134,16 +135,16 @@ ProgramNode *AstParser::parseProgram() {
 FunctionNode *AstParser::parseFunction(AstNode *parent) {
   Token ident = nextExpected(IDENTIFIER, "Expecting identifier");
 
-  auto node = new FunctionNode(parent, ident.raw);
+  auto node = new FunctionNode(currLine(), currCol(), parent, ident.raw);
 
   nextExpected(OPEN_PAR, "Expecting (");
 
   if (lexer->get().mappedType != CLOSE_PAR) {
     lexer->unget();
-    node->params.push_back(parseVarDef(node));
+    node->_params.push_back(parseVarDef(node));
 
     while (lexer->get().mappedType == COMMA) {
-      node->params.push_back(parseVarDef(node));
+      node->_params.push_back(parseVarDef(node));
     }
   }
   lexer->unget();
@@ -151,23 +152,28 @@ FunctionNode *AstParser::parseFunction(AstNode *parent) {
   nextExpected(CLOSE_PAR, "Expecting )");
   nextExpected(RET_TYPE, "Expecting ->");
 
-  node->retType = parseTypeDef(node);
-  node->body = parseBlock(node);
+  node->_retType = parseTypeDef(node);
+  node->_body = parseBlock(node);
 
   return node;
 }
 
 /*
-  STRUCT: IDENTIFIER OPEN_BRACES [ VAR_DEF SEMICOLON ]* CLOSE_BRACES
+  STRUCT: IDENTIFIER OPEN_BRACES [ (VAR_DEF | FUNCTION) SEMICOLON ]*
+  CLOSE_BRACES
 */
 StructDefNode *AstParser::parseStruct(AstNode *parent) {
   Token token = nextExpected(IDENTIFIER, "Expecting identifier");
-  auto node = new StructDefNode(parent, token.raw);
+  auto node = new StructDefNode(currLine(), currCol(), parent, token.raw);
   nextExpected(OPEN_BRACES, "Expecting {");
 
   while ((token = lexer->get()).mappedType != CLOSE_BRACES) {
-    lexer->unget();
-    node->members.push_back(parseVarDef(node));
+    if (lexer->look().mappedType == FUNC) {
+      node->_members.push_back(parseFunction(node));
+    } else {
+      lexer->unget();
+      node->_members.push_back(parseVarDef(node));
+    }
     nextExpected(SEMICOLON, "Expecting semicolon");
   }
 
@@ -180,14 +186,14 @@ StructDefNode *AstParser::parseStruct(AstNode *parent) {
 BlockNode *AstParser::parseBlock(AstNode *parent) {
   nextExpected(OPEN_BRACES, "Expecting {");
 
-  auto node = new BlockNode(parent);
+  auto node = new BlockNode(currLine(), currCol(), parent);
 
   while (lexer->get().mappedType != CLOSE_BRACES) {
     if (lexer->look().rawType == TokenType::END_OF_INPUT)
       sintax_error("Unexpected EOF reading block");
 
     lexer->unget();
-    node->statements.push_back(parseStatement(node));
+    node->_statements.push_back(parseStatement(node));
   }
 
   return node;
@@ -209,18 +215,19 @@ AstNode *AstParser::parseStatement(AstNode *parent) {
   case WHILE:
     lexer->unget();
     return parseWhile(parent);
+  case CONST:
   case VAR: {
-    auto node = parseVarDef(parent);
+    auto node = parseVarDef(parent, token.mappedType == CONST);
     nextExpected(SEMICOLON, "Expecting semicolon after variable definition");
     return node;
   }
   case BREAK: {
-    auto node = new BreakNode(parent);
+    auto node = new BreakNode(currLine(), currCol(), parent);
     nextExpected(SEMICOLON, "Expecting semicolon after break");
     return node;
   }
   case RETURN: {
-    auto node = new ReturnNode(parent);
+    auto node = new ReturnNode(currLine(), currCol(), parent);
     node->expr = parseExpr(node);
     nextExpected(SEMICOLON, "Expecting semicolon after return");
     return node;
@@ -240,14 +247,14 @@ AstNode *AstParser::parseStatement(AstNode *parent) {
 IfNode *AstParser::parseIf(AstNode *parent) {
   nextExpected(IF, "Expecting IF");
 
-  auto node = new IfNode(parent);
+  auto node = new IfNode(currLine(), currCol(), parent);
 
-  node->expr = parseExpr(node);
-  node->ifBody = parseBlock(node);
+  node->_expr = parseExpr(node);
+  node->_ifBody = parseBlock(node);
 
   auto token = lexer->get();
   if (token.mappedType == ELSE)
-    node->elseBody = parseBlock(node);
+    node->_elseBody = parseBlock(node);
   else
     lexer->unget();
 
@@ -260,34 +267,32 @@ IfNode *AstParser::parseIf(AstNode *parent) {
 ForNode *AstParser::parseFor(AstNode *parent) {
   nextExpected(FOR, "Expecting FOR");
 
-  auto node = new ForNode(parent);
+  auto node = new ForNode(currLine(), currCol(), parent);
 
   nextExpected(OPEN_PAR, "Expecting (");
 
-  node->start = parseExpr(node);
+  node->_start = parseExpr(node);
   nextExpected(SEMICOLON, "Expecting ;");
-  node->cond = parseExpr(node);
+  node->_cond = parseExpr(node);
   nextExpected(SEMICOLON, "Expecting ;");
-  node->inc = parseExpr(node);
+  node->_inc = parseExpr(node);
 
   nextExpected(CLOSE_PAR, "Expecting )");
 
-  node->body = parseBlock(node);
+  node->_body = parseBlock(node);
 
   return node;
 }
 
 /*
-  WHILE: WHILE OPEN_PAR EXPR CLOSE_PAR BLOCK
+  WHILE: WHILE EXPR BLOCK
 */
 WhileNode *AstParser::parseWhile(AstNode *parent) {
   nextExpected(WHILE, "Expecting WHILE");
-  auto node = new WhileNode(parent);
+  auto node = new WhileNode(currLine(), currCol(), parent);
 
-  nextExpected(OPEN_PAR, "Expecting (");
-  node->expr = parseExpr(node);
-  nextExpected(CLOSE_PAR, "Expecting )");
-  node->body = parseBlock(node);
+  node->_expr = parseExpr(node);
+  node->_body = parseBlock(node);
 
   return node;
 }
@@ -295,16 +300,17 @@ WhileNode *AstParser::parseWhile(AstNode *parent) {
 /*
   VAR_DEF: IDENTIFIER TYPE TYPE_DEF [ ASSIGN EXPR]?
 */
-VarDefNode *AstParser::parseVarDef(AstNode *parent) {
+VarDefNode *AstParser::parseVarDef(AstNode *parent, bool constant) {
   auto token = nextExpected(IDENTIFIER, "Expecting identifier");
 
-  auto node = new VarDefNode(parent, token.raw);
+  auto node =
+      new VarDefNode(currLine(), currCol(), parent, token.raw, constant);
   nextExpected(IND_TYPE, "Expecting type indicator");
-  node->type = parseTypeDef(node);
+  node->_type = parseTypeDef(node);
 
   token = lexer->get();
   if (token.mappedType == ASSIGN) {
-    node->defaultVal = parseExpr(node);
+    node->_defaultVal = parseExpr(node);
   } else
     lexer->unget();
 
@@ -317,14 +323,15 @@ VarDefNode *AstParser::parseVarDef(AstNode *parent) {
 TypeDefNode *AstParser::parseTypeDef(AstNode *parent) {
   auto token = nextExpected(IDENTIFIER, "Expecting identifier");
 
-  auto node = TypeDefNode::build(token.raw);
+  auto node = TypeDefNode::build(token.raw, currLine(), currCol());
 
   while ((token = lexer->get()).mappedType == MULT) {
-    node = TypeDefNode::buildPointer(node);
+    node = TypeDefNode::buildPointer(node, currLine(), currCol());
   }
   if (token.mappedType == OPEN_BRACKETS) {
     token = nextExpected(LEX_NUMBER, "Expecting array size");
-    node = TypeDefNode::buildArray(node, std::stoi(token.raw));
+    node = TypeDefNode::buildArray(node, std::stoi(token.raw), currLine(),
+                                   currCol());
     nextExpected(CLOSE_BRACKETS, "Expecting ]");
   } else
     lexer->unget();
@@ -345,7 +352,7 @@ ExprNode *AstParser::parseExpr(AstNode *parent) {
   std::stack<AstNode *> operands;
   std::stack<std::string> operators;
 
-  auto node = new ExprNode(parent);
+  auto node = new ExprNode(currLine(), currCol(), parent);
 
   operands.push(parseAtom(node));
 
@@ -358,7 +365,8 @@ ExprNode *AstParser::parseExpr(AstNode *parent) {
       auto left = operands.top();
       operands.pop();
 
-      operands.push(new ExprBinaryNode(left, op, right, node));
+      operands.push(
+          new ExprBinaryNode(currLine(), currCol(), node, left, op, right));
     }
   };
 
@@ -380,8 +388,8 @@ ExprNode *AstParser::parseExpr(AstNode *parent) {
     operands.push(parseAtom(node));
   }
 
-  operands.top()->parent = node;
-  node->children.push_back(operands.top());
+  operands.top()->_parent = node;
+  node->_children.push_back(operands.top());
   return node;
 }
 
@@ -396,7 +404,8 @@ AstNode *AstParser::parseAtom(AstNode *parent) {
   case LEX_CHAR:
   case LEX_STRING:
   case LEX_NUMBER:
-    return new ExprConstantNode(token.raw, token.mappedType, parent);
+    return new ExprConstantNode(currLine(), currCol(), parent, token.raw,
+                                token.mappedType);
   case OPEN_PAR: {
     auto node = parseExpr(parent);
     nextExpected(CLOSE_PAR, "Expecting )");
@@ -410,15 +419,15 @@ AstNode *AstParser::parseAtom(AstNode *parent) {
       sintax_error("Unexpected value reading expression :" + token.raw);
 
     auto atom = parseAtom(parent);
-    return new ExprUnaryNode(token.raw, atom, parent);
+    return new ExprUnaryNode(currLine(), currCol(), parent, token.raw, atom);
   }
   }
 }
 
 /*
-  REFERENCE: BASE_REFERENCE [ OPEN_PAR [ EXPR ]? [ COMMA EXPR ]* CLOSE_PAR ] |
-  BASE_REFRENCE OPEN_BRACKETS EXPR CLOSE_BRACKETS BASE_REFERENCE: IDENTIFIER [
-  DOT IDENTIFIER ]*
+  REFERENCE: BASE_REFERENCE [ OPEN_PAR [ EXPR ]? [ COMMA EXPR ]* CLOSE_PAR ]
+  BASE_REFRENCE: IDENTIFIER  [ OPEN_BRACKETS EXPR CLOSE_BRACKETS ]+ |
+                 IDENTIFIER [ DOT IDENTIFIER ]*
 */
 AstNode *AstParser::parseIdentifier(AstNode *parent) {
   auto token = nextExpected(IDENTIFIER, "Expecting identifier");
@@ -428,37 +437,40 @@ AstNode *AstParser::parseIdentifier(AstNode *parent) {
   ExprVarRefNode *node;
   ExprCallNode *callNode;
 
-  node = new ExprVarRefNode(nullptr, token.raw);
+  node = new ExprVarRefNode(currLine(), currCol(), nullptr, token.raw);
   while ((token = lexer->get()).mappedType == DOT) {
     token = nextExpected(IDENTIFIER, "Expecting identifier");
-    node = new ExprVarRefNode(nullptr, token.raw, node);
+    node = new ExprVarRefNode(currLine(), currCol(), nullptr, token.raw, node);
   }
+  lexer->unget();
+  while ((token = lexer->get()).mappedType == OPEN_BRACKETS) {
+    auto indexExpr = parseExpr();
+    node = new ExprVarRefNode(currLine(), currCol(), nullptr, node->_varName,
+                              node, indexExpr);
+    nextExpected(CLOSE_BRACKETS, "Expecting ]");
+  }
+
   finalNode = node;
 
   if (token.mappedType == OPEN_PAR) {
-    callNode = new ExprCallNode(nullptr, node);
+    callNode = new ExprCallNode(currLine(), currCol(), nullptr, node);
 
     if (lexer->get().mappedType != CLOSE_PAR) {
       lexer->unget();
-      callNode->params.push_back(parseExpr(node));
+      callNode->_args.push_back(parseExpr(node));
+      while (lexer->get().mappedType == COMMA)
+        callNode->_args.push_back(parseExpr(node));
     }
-    while (lexer->get().mappedType == COMMA)
-      callNode->params.push_back(parseExpr(node));
     lexer->unget();
 
     nextExpected(CLOSE_PAR, "Expecting )");
 
     finalNode = callNode;
-  } else if (token.mappedType == OPEN_BRACKETS) {
-    auto indexExpr = parseExpr();
-    node->arrIndexed = true;
-    node->arrIndex = indexExpr;
-    nextExpected(CLOSE_BRACKETS, "Expecting ]");
   } else
     lexer->unget();
 
-  finalNode->parent = parent;
-  parent->children.push_back(finalNode);
+  finalNode->_parent = parent;
+  parent->_children.push_back(finalNode);
 
   return finalNode;
 }

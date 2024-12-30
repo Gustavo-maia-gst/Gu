@@ -11,7 +11,7 @@ FILES = src/main.cpp \
 		src/parser/ast/ast.cpp
 
 all: build | $(FILES)
-	rm build/obj/*
+	rm -f build/obj/*
 
 	for file in $(FILES); do \
 		filename=$${file%.*}; \

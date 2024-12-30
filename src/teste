@@ -2,6 +2,10 @@ struct Pessoa {
     nome: char[12];
     idade: int;
     mae: Pessoa*;
+
+    func falar(this: Pessoa) -> void {
+
+    };
 }
 
 func main() -> int {
@@ -14,7 +18,7 @@ func main() -> int {
     p.idade = 19;
     p.mae = m;
 
-    print(p.nome[0]);
+    print(p.nome[0], p.funcao());
 
     return;
 }

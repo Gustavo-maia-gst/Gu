@@ -8,6 +8,7 @@ enum ProgramTokenType {
 
   FUNC,
   VAR,
+  CONST,
   IF,
   ELSE,
   WHILE,
@@ -85,14 +86,18 @@ private:
   IfNode *parseIf(AstNode *parent);
   WhileNode *parseWhile(AstNode *parent);
   ForNode *parseFor(AstNode *parent);
-  VarDefNode *parseVarDef(AstNode *parent);
+  VarDefNode *parseVarDef(AstNode *parent, bool constant = false);
   TypeDefNode *parseTypeDef(AstNode *parent);
 
   AstNode *parseAtom(AstNode *parent);
   AstNode *parseIdentifier(AstNode *parent);
 
-  const Token &nextExpected(ProgramTokenType expectedType, std::string errorMsg);
+  const Token &nextExpected(ProgramTokenType expectedType,
+                            std::string errorMsg);
   void sintax_error(std::string msg);
+
+  int currLine() { return this->lexer->look().line; }
+  int currCol() { return this->lexer->look().start; }
 };
 
 #endif
