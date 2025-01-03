@@ -1,37 +1,57 @@
 #ifndef _validator
 #define _validator
 #include "../parser/ast/ast.h"
-#include <unordered_map>
+#include "../parser/parser.h"
+#include <iostream>
+#include <map>
+#include <ostream>
+#include <stack>
+#include <string>
+#include <vector>
 
-class SemanticValidator : BaseVisitor {
+class SemanticValidator : public BaseVisitor {
 public:
-    void visitProgram(ProgramNode *node) override;
-    void visitFunction(FunctionNode *node) override;
-    void visitStructDef(StructDefNode *node) override;
-    void visitVarDef(VarDefNode *node) override;
-    void visitTypeDefNode(TypeDefNode *node) override;
+  SemanticValidator();
 
-    void visitBreakNode(BreakNode *node) override;
-    void visitIf(IfNode *node) override;
-    void visitWhile(WhileNode *node) override;
-    void visitReturnNode(ReturnNode *node) override;
+  void visitProgram(ProgramNode *node) override;
+  void visitFunction(FunctionNode *node) override;
+  void visitStructDef(StructDefNode *node) override;
+  void visitVarDef(VarDefNode *node) override;
+  void visitTypeDefNode(TypeDefNode *node) override;
 
-    void visitExpr(ExprNode *node) override;
-    void visitExprVarRef(ExprVarRefNode *node) override;
-    void visitExprAssign(ExprAssignNode *node) override;
-    void visitExprCall(ExprCallNode *node) override;
-    void visitExprUnaryOp(ExprUnaryNode *node) override;
-    void visitExprBinaryOp(ExprBinaryNode *node) override;
+  void visitBreakNode(BreakNode *node) override;
+  void visitReturnNode(ReturnNode *node) override;
 
-    std::vector<std::string> getErrors();
+  void visitExprVarRef(ExprVarRefNode *node) override;
+  void visitExprConstant(ExprConstantNode *node) override;
+  void visitExprUnaryOp(ExprUnaryNode *node) override;
+  void visitExprBinaryOp(ExprBinaryNode *node) override;
+  void visitMemberAccess(ExprMemberAccess *node) override;
+  void visitIndexAccess(ExprIndex *node) override;
+  void visitExprCall(ExprCallNode *node) override;
+
+  void visitBody(BlockNode *node) override { node->visitChildren(this); };
+  void visitIf(IfNode *node) override { node->visitChildren(this); };
+  void visitWhile(WhileNode *node) override { node->visitChildren(this); };
+  void visitFor(ForNode *node) override { node->visitChildren(this); };
+
+  const std::vector<std::string> getErrors() { return errors; };
+
 private:
-    void unexpected_error(std::string msg);
-    void compile_error(std::string msg);
-    void type_error(std::string msg);
-    void name_error(std::string msg);
+  std::vector<std::string> errors;
 
-    ProgramNode *program;
-    FunctionNode *function;
+  void unexpected_error(std::string msg, AstNode *node);
+  void compile_error(std::string msg, AstNode *node);
+  void type_error(std::string msg, AstNode *node);
+  void name_error(std::string msg, AstNode *node);
+
+  VarDefNode *resolveVar(std::string &varName);
+  StructDefNode *resolveStruct(std::string &structName);
+  FunctionNode *resolveFunction(std::string &funcName);
+
+  ProgramNode *program;
+  FunctionNode *function;
+  bool hasReturn;
 };
 
 #endif

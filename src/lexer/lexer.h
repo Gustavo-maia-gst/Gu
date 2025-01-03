@@ -6,7 +6,7 @@
 #include <queue>
 #include <stdexcept>
 #include <string>
-#include <unordered_map>
+#include <map>
 #include <unordered_set>
 
 const int READ_BUFF_SIZE = 2048;
@@ -36,7 +36,7 @@ public:
 
   static Lexer *fromFile(std::string &path);
   static Lexer *fromStream(std::istream *stream);
-  void setTypeMapper(std::unordered_map<std::string, int> *tokenMapper);
+  void setTypeMapper(std::map<std::string, int> *tokenMapper);
 
   const Token &look();
   const Token &get();
@@ -45,7 +45,7 @@ public:
 private:
   Lexer();
 
-  std::unordered_map<std::string, int> *tokenMapper;
+  std::map<std::string, int> *tokenMapper;
   std::queue<char> buff;
   std::istream *stream;
 

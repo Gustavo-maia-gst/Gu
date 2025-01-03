@@ -33,15 +33,11 @@ Lexer *Lexer::fromStream(std::istream *stream) {
   return sc;
 }
 
-void Lexer::setTypeMapper(std::unordered_map<std::string, int> *tokenMapper) {
+void Lexer::setTypeMapper(std::map<std::string, int> *tokenMapper) {
   this->tokenMapper = tokenMapper;
 }
 
 const Token &Lexer::look() {
-  if (current.raw.empty()) {
-    return get();
-  }
-
   return current;
 }
 
@@ -165,6 +161,11 @@ void Lexer::nextToken_Number() {
   } else {
     while (std::isdigit(lookChar()))
       s += getChar();
+    if (lookChar() == '.') {
+      getChar();
+      while (std::isdigit(lookChar()))
+        s += getChar();
+    }
   }
 
   current.raw = s;

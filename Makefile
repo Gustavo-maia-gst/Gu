@@ -7,11 +7,12 @@ CCFLAGS = $(DEBUG) $(OPT) $(WARN)
 
 FILES = src/main.cpp \
         src/lexer/lexer.cpp \
+		src/parser/ast/ast.cpp \
         src/parser/parser.cpp \
-		src/parser/ast/ast.cpp
+		src/semantic/validator.cpp
 
 all: build | $(FILES)
-	rm -f build/obj/*
+	rm -rf build/obj/*
 
 	for file in $(FILES); do \
 		filename=$${file%.*}; \

@@ -2,6 +2,9 @@
 #define _parser
 #include "../lexer/lexer.h"
 #include "ast/ast.h"
+#include <cstdlib>
+#include <stack>
+#include <unordered_set>
 
 enum ProgramTokenType {
   UNMAPPED,
@@ -78,6 +81,7 @@ public:
 
 private:
   Lexer *lexer;
+  FunctionNode *function;
 
   FunctionNode *parseFunction(AstNode *parent);
   StructDefNode *parseStruct(AstNode *parent);
@@ -89,8 +93,7 @@ private:
   VarDefNode *parseVarDef(AstNode *parent, bool constant = false);
   TypeDefNode *parseTypeDef(AstNode *parent);
 
-  AstNode *parseAtom(AstNode *parent);
-  AstNode *parseIdentifier(AstNode *parent);
+  ExprNode *parseAtom(AstNode *parent);
 
   const Token &nextExpected(ProgramTokenType expectedType,
                             std::string errorMsg);

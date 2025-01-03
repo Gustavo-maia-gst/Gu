@@ -1,24 +1,19 @@
-struct Pessoa {
-    nome: char[12];
-    idade: int;
-    mae: Pessoa*;
-
-    func falar(this: Pessoa) -> void {
-
-    };
+struct Number {
+    val: int;
 }
 
-func main() -> int {
-    var m: Pessoa;
-    m.nome = "Edivania";
-    m.idade = 40;
+func main() -> int
+{
+    var arr: Number[100], i: int, j: int;
 
-    var p: Pessoa;
-    p.nome = "Gustavo";
-    p.idade = 19;
-    p.mae = m;
+    for (i = 100; i > 0; i = i - 1) {
+        for (j = 0; j < i; j = j + 1) {
+            var temp: int;
+            temp = arr[i].val;
+            arr[i].val = arr[j].val;
+            arr[j].va[a.b] = temp;
+        }
+    }
 
-    print(p.nome[0], p.funcao());
-
-    return;
+    return 0;
 }
