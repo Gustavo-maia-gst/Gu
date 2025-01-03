@@ -9,7 +9,8 @@ FILES = src/main.cpp \
         src/lexer/lexer.cpp \
 		src/parser/ast/ast.cpp \
         src/parser/parser.cpp \
-		src/semantic/validator.cpp
+		src/semantic/validator.cpp \
+		src/codegen/translators/gu2c.cpp
 
 all: build | $(FILES)
 	rm -rf build/obj/*

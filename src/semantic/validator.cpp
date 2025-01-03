@@ -308,8 +308,14 @@ void SemanticValidator::visitMemberAccess(ExprMemberAccess *node) {
     return;
   }
 
-  auto memberDef = structDef->membersDef[node->_memberName];
-  auto funcDef = structDef->funcMembers[node->_memberName];
+  auto memberDef = structDef->membersDef.find(node->_memberName) !=
+                           structDef->membersDef.end()
+                       ? structDef->membersDef[node->_memberName]
+                       : nullptr;
+  auto funcDef = structDef->funcMembers.find(node->_memberName) !=
+                         structDef->funcMembers.end()
+                     ? structDef->funcMembers[node->_memberName]
+                     : nullptr;
 
   if (!memberDef && !funcDef) {
     name_error("Member " + node->_memberName + " does not exist on struct " +

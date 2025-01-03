@@ -2,6 +2,7 @@
 #include <cerrno>
 #include <map>
 #include <string>
+#include <vector>
 
 void AstNode::visitChildren(BaseVisitor *visitor) {
   for (auto child : this->_children)
@@ -11,6 +12,16 @@ void AstNode::visitChildren(BaseVisitor *visitor) {
 bool AstNode::isLoopNode() {
   auto nodeType = getNodeType();
   return nodeType == NodeType::WHILE || nodeType == NodeType::FOR;
+}
+
+bool AstNode::isExpr() {
+  auto nodeType = getNodeType();
+  return nodeType == NodeType::FUNCCALL || nodeType == NodeType::VAR_REF ||
+         nodeType == NodeType::EXPR_BINARY ||
+         nodeType == NodeType::EXPR_CONSTANT ||
+         nodeType == NodeType::EXPR_UNARY ||
+         nodeType == NodeType::MEMBER_ACCESS ||
+         nodeType == NodeType::INDEX_ACCESS;
 }
 
 void AstNode::visit(BaseVisitor *visitor) {
@@ -87,7 +98,7 @@ bool DataType::isAddress(RawDataType &raw) {
   return raw == RawDataType::POINTER || raw == RawDataType::ARRAY;
 }
 
-static std::map<RawDataType, DataType *> rawTypesMap;
+static std::vector<DataType *> typesRefs;
 static std::map<RawDataType, int> sizesMap{
     {RawDataType::CHAR, 1},    {RawDataType::SHORT, 2},
     {RawDataType::INT, 4},     {RawDataType::FLOAT, 4},
@@ -96,16 +107,14 @@ static std::map<RawDataType, int> sizesMap{
     {RawDataType::STRUCT, 8},
 };
 
-DataType::DataType() { inner = nullptr; }
+DataType::DataType() {}
 
 DataType *DataType::build(RawDataType raw) {
-  if (rawTypesMap.find(raw) != rawTypesMap.end())
-    return rawTypesMap[raw];
   auto datatype = new DataType();
   datatype->raw = raw;
-  rawTypesMap[raw] = datatype;
-  rawTypesMap[raw]->size = sizesMap[raw];
-  return rawTypesMap[raw];
+  datatype->inner = nullptr;
+  typesRefs.push_back(datatype);
+  return datatype;
 }
 
 DataType *DataType::buildPointer(DataType *type) {

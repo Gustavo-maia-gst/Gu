@@ -94,7 +94,6 @@ public:
   virtual void visitExprCall(ExprCallNode *node) {};
   virtual void visitExprUnaryOp(ExprUnaryNode *node) {};
 
-  virtual void visitExpr(ExprNode *expr) {};
   virtual void visitExprVarRef(ExprVarRefNode *node) {};
   virtual void visitExprConstant(ExprConstantNode *node) {};
 };
@@ -153,6 +152,7 @@ public:
 
   inline NodeType getNodeType() { return nodeType; };
   bool isLoopNode();
+  bool isExpr();
 
   AstNode *_parent;
   std::vector<AstNode *> _children;

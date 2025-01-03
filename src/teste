@@ -1,19 +1,17 @@
 struct Number {
     val: int;
+
+    func show(this: *Number) -> int {
+        return *this.val;
+    };
 }
 
 func main() -> int
 {
-    var arr: Number[100], i: int, j: int;
+    var n1: Number, n2: Number;
 
-    for (i = 100; i > 0; i = i - 1) {
-        for (j = 0; j < i; j = j + 1) {
-            var temp: int;
-            temp = arr[i].val;
-            arr[i].val = arr[j].val;
-            arr[j].va[a.b] = temp;
-        }
-    }
+    n1.val = 1;
+    n2.val = 2;
 
-    return 0;
+    return n1.val + n2.val * n2.val || 1 + 2 = 4 ;
 }

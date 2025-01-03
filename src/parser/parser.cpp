@@ -501,7 +501,7 @@ ExprNode *AstParser::parseAtom(AstNode *parent) {
   }
   default: {
     if (unaryOps.find(token.raw) == unaryOps.end())
-      sintax_error("Unexpected value reading expression :" + token.raw);
+      sintax_error("Unexpected value reading expression: " + token.raw);
 
     auto atom = parseAtom(parent);
     return new ExprUnaryNode(currLine(), currCol(), parent, token.raw,
