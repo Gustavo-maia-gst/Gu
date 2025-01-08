@@ -98,6 +98,10 @@ bool DataType::isAddress(RawDataType &raw) {
   return raw == RawDataType::POINTER || raw == RawDataType::ARRAY;
 }
 
+bool DataType::isFloat(RawDataType &raw) {
+  return raw == RawDataType::FLOAT || raw == RawDataType::DOUBLE;
+}
+
 static std::vector<DataType *> typesRefs;
 static std::map<RawDataType, int> sizesMap{
     {RawDataType::CHAR, 1},    {RawDataType::SHORT, 2},

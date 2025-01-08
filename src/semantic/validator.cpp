@@ -97,8 +97,7 @@ void SemanticValidator::visitStructDef(StructDefNode *node) {
                       node);
 
       node->membersDef[varDefNode->_name] = varDefNode;
-      node->membersOffset[varDefNode->_name] = currentOffset;
-      currentOffset += varDefNode->_typeDef->dataType->size;
+      node->membersOffset[varDefNode->_name] = currentOffset++;
       break;
     }
     case NodeType::FUNCTION:
@@ -157,11 +156,37 @@ void SemanticValidator::visitVarDef(VarDefNode *node) {
   node->type = node->_typeDef->dataType;
   if (function)
     function->localVars[node->_name] = node;
+  else {
+    if (node->_defaultVal && node->_defaultVal->getNodeType() != NodeType::EXPR_CONSTANT)
+      compile_error("Default value in global variable should be constant", node);
+  }
 
   if (node->_defaultVal &&
       DataType::getResultType(node->type, "=", node->_defaultVal->type) !=
           node->type)
     type_error("non-compatible type assignment", node);
+}
+
+void SemanticValidator::visitIf(IfNode *node) {
+  node->visitChildren(this);
+
+  auto exprType = node->_expr->type->raw;
+
+  if (DataType::isNumeric(exprType)) return;
+  if (DataType::isAddress(exprType)) {
+    node->_expr->type = DataType::build(RawDataType::LONG);
+    return;
+  }
+
+  type_error("The condition type should be a numeric-based type", node);
+}
+
+void SemanticValidator::visitFor(ForNode *node) {
+
+}
+
+void SemanticValidator::visitWhile(WhileNode *node) {
+
 }
 
 void SemanticValidator::visitTypeDefNode(TypeDefNode *node) {

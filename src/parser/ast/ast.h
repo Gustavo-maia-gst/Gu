@@ -116,6 +116,7 @@ public:
   static bool isNumeric(RawDataType &raw);
   static bool isInt(RawDataType &raw);
   static bool isAddress(RawDataType &raw);
+  static bool isFloat(RawDataType &raw);
 
   static DataType *build(RawDataType type);
   static DataType *build(TypeDefNode *node);
@@ -251,6 +252,7 @@ public:
   std::string _name;
   TypeDefNode *_typeDef;
   ExprNode *_defaultVal;
+  bool _constant;
 
   DataType *type;
 
@@ -258,6 +260,7 @@ public:
              bool constant = false)
       : AstNode(NodeType::VAR_DEF, line, startCol, parent) {
     this->_name = name;
+    _constant = constant;
   }
 };
 

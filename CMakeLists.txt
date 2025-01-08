@@ -1,19 +1,25 @@
-# Defina a versão mínima do CMake necessária
 cmake_minimum_required(VERSION 3.10)
 
-# Defina o nome do projeto
 project(gu)
-
-# Defina as opções de compilação
-set(CMAKE_CXX_STANDARD 17)  # Defina a versão do C++ (se necessário)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")  # Opções de warnings
-set(CMAKE_CXX_FLAGS_DEBUG "-g")  # Flags de debug
-set(CMAKE_CXX_FLAGS_RELEASE "-O0")  # Flags de otimização (ajuste conforme necessário)
-
-# Defina a variável do alvo
 set(TARGET gu)
 
-# Adicione o diretório de arquivos fonte
+set(CMAKE_CXX_STANDARD 17)
+
+# Flags de compilação (Debug e Release)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
+set(CMAKE_CXX_FLAGS_DEBUG "-g")
+set(CMAKE_CXX_FLAGS_RELEASE "-O0")
+
+# Encontrar o LLVM (configuração automática)
+find_package(LLVM REQUIRED CONFIG)
+
+# Incluir diretórios do LLVM
+include_directories(${LLVM_INCLUDE_DIRS})
+
+# Definir as definições do LLVM
+add_definitions(${LLVM_DEFINITIONS})
+
+# Fontes do projeto
 set(SOURCES
     src/main.cpp
     src/lexer/lexer.cpp
@@ -23,25 +29,25 @@ set(SOURCES
     src/codegen/translators/gu2c.cpp
 )
 
-# Criação do diretório de saída
-set(BUILD_DIR ${CMAKE_BINARY_DIR}/build)
-set(OBJ_DIR ${BUILD_DIR}/obj)
-set(BIN_DIR ${BUILD_DIR}/bin)
+set(CMAKE_STATIC_LIBRARIES TRUE)
+set(CMAKE_EXE_LINKER_FLAGS "-static")
 
-# Defina os diretórios de objetos e binários
-file(MAKE_DIRECTORY ${OBJ_DIR})
-file(MAKE_DIRECTORY ${BIN_DIR})
+# Diretórios de build
+set(OBJ_DIR ${CMAKE_BINARY_DIR}/obj)
+set(BIN_DIR ${CMAKE_BINARY_DIR}/bin)
 
-# Crie o executável
+# Criar diretórios
+file(MAKE_DIRECTORY ${OBJ_DIR} ${BIN_DIR})
+
+# Adicionar o executável
 add_executable(${TARGET} ${SOURCES})
 
-# Defina os diretórios de saída
+# Definir propriedades do alvo
 set_target_properties(${TARGET} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${BIN_DIR}
     ARCHIVE_OUTPUT_DIRECTORY ${OBJ_DIR}
 )
 
-# Incluir o diretório de objetos para os arquivos de objetos (como se fosse a compilação separada)
-target_include_directories(${TARGET} PRIVATE ${OBJ_DIR})
+# Linkar com as bibliotecas do LLVM e componentes necessários
+target_link_libraries(${TARGET} ${LLVM_LIBRARIES})
 
-# Caso precise adicionar algum comportamento extra no build, como copiar arquivos ou algo assim, você pode usar CMake e commands adicionais.

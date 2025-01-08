@@ -19,6 +19,9 @@ public:
   void visitVarDef(VarDefNode *node) override;
   void visitTypeDefNode(TypeDefNode *node) override;
 
+  void visitIf(IfNode *node) override;
+  void visitWhile(WhileNode *node) override;
+  void visitFor(ForNode *node) override;
   void visitBreakNode(BreakNode *node) override;
   void visitReturnNode(ReturnNode *node) override;
 
@@ -31,9 +34,6 @@ public:
   void visitExprCall(ExprCallNode *node) override;
 
   void visitBody(BlockNode *node) override { node->visitChildren(this); };
-  void visitIf(IfNode *node) override { node->visitChildren(this); };
-  void visitWhile(WhileNode *node) override { node->visitChildren(this); };
-  void visitFor(ForNode *node) override { node->visitChildren(this); };
 
   const std::vector<std::string> getErrors() { return errors; };
 
