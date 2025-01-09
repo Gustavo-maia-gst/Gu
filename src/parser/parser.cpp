@@ -55,27 +55,27 @@ std::map<std::string, int> baseTypeMapper = {
 };
 
 std::map<std::string, int> binaryOpsPrecedence = {
-    {".", 0},   {"[", 0},   {"(", 0},
+    {".", 0},  {"[", 0},  {"(", 0},
 
-    {"*", 1},   {"/", 1},   {"%", 1},
+    {"*", 1},  {"/", 1},  {"%", 1},
 
-    {"+", 2},   {"-", 2},
+    {"+", 2},  {"-", 2},
 
-    {"<<", 3},  {">>", 3},
+    {"<<", 3}, {">>", 3},
 
-    {">", 4},   {">=", 4},  {"<", 4},   {"<=", 4},
+    {">", 4},  {">=", 4}, {"<", 4}, {"<=", 4},
 
-    {"!=", 5},  {"==", 5},
+    {"!=", 5}, {"==", 5},
 
     {"&", 6},
 
-    {"|", 7},
+    {"|", 7},  {"^", 7},
 
     {"&&", 8},
 
     {"||", 9},
 
-    {"=", 10},  
+    {"=", 10},
 };
 
 std::unordered_set<std::string> unaryOps = {"+", "-", "!", "&", "*"};
@@ -205,7 +205,7 @@ AstNode *AstParser::parseStatement(AstNode *parent) {
     return parseWhile(parent);
   case CONST:
   case VAR: {
-    auto block = (BlockNode *) parent;
+    auto block = (BlockNode *)parent;
 
     bool constant = token.mappedType == CONST;
     auto node = parseVarDef(parent, constant);

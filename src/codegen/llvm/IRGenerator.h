@@ -16,12 +16,13 @@
 #include <string>
 #include <utility>
 
-static std::unique_ptr<llvm::LLVMContext> TheContext;
-static std::unique_ptr<llvm::IRBuilder<>> Builder;
-static std::unique_ptr<llvm::Module> TheModule;
+extern std::unique_ptr<llvm::LLVMContext> TheContext;
+extern std::unique_ptr<llvm::IRBuilder<>> Builder;
+extern std::unique_ptr<llvm::Module> TheModule;
 
 class IRGenerator : public BaseVisitor {
 public:
+
   void visitProgram(ProgramNode *node);
   void visitFunction(FunctionNode *node);
   void visitIf(IfNode *node);
@@ -49,6 +50,8 @@ private:
 
   llvm::Type *getType(DataType *type);
   llvm::Value *getZero(DataType *type);
+  llvm::Value *getOne(DataType *type);
+  llvm::Value *getCast(llvm::Value *value, DataType *original, DataType *castTo);
   llvm::Value *getCondition(ExprNode *node, bool invert = false);
   llvm::Value *current;
 

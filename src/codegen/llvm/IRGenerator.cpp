@@ -4,9 +4,19 @@
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/InstrTypes.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Value.h>
+#include <memory>
 
 using namespace llvm;
+
+std::unique_ptr<LLVMContext> TheContext = std::make_unique<LLVMContext>();
+std::unique_ptr<llvm::IRBuilder<>> Builder =
+    std::make_unique<llvm::IRBuilder<>>(*TheContext);
+;
+std::unique_ptr<llvm::Module> TheModule =
+    std::make_unique<llvm::Module>("Program", *TheContext);
+;
 
 std::map<RawDataType, Type *> rawTypeMapper = {
     {RawDataType::CHAR, Type::getInt8Ty(*TheContext)},
@@ -59,6 +69,38 @@ Value *IRGenerator::getZero(DataType *type) {
     return ConstantFP::get(getType(type), 0);
   else
     return ConstantInt::get(getType(type), 0);
+}
+
+Value *IRGenerator::getOne(DataType *type) {
+  if (DataType::isFloat(type->raw))
+    return ConstantFP::get(getType(type), 1);
+  else
+    return ConstantInt::get(getType(type), 1);
+}
+
+Value *IRGenerator::getCast(Value *value, DataType *original,
+                            DataType *castTo) {
+  if (original->equals(castTo))
+    return value;
+  if (DataType::isAddress(original->raw) && DataType::isAddress((castTo->raw)))
+    return value;
+
+  if (!DataType::isNumeric(original->raw) || !DataType::isNumeric(castTo->raw))
+    error("Invalid cast");
+
+  if (DataType::isInt(original->raw) && DataType::isInt((castTo->raw))) {
+    if (original->size < castTo->size)
+      return Builder->CreateSExt(value, getType(castTo));
+    return Builder->CreateTrunc(value, getType(castTo));
+  }
+
+  if (DataType::isFloat(original->raw) && DataType::isFloat(castTo->raw)) {
+    if (original->size < castTo->size)
+      return Builder->CreateFPExt(value, getType(castTo));
+    return Builder->CreateFPTrunc(value, getType(castTo));
+  }
+
+  error("Invalid cast");
 }
 
 Value *IRGenerator::getCondition(ExprNode *node, bool invert) {
@@ -210,7 +252,7 @@ void IRGenerator::visitVarDef(VarDefNode *node) {
     if (!varPtr)
       error("Invalid varDef");
 
-    auto loadedValue = Builder->CreateStore(defaultVal, varPtr);
+    Builder->CreateStore(defaultVal, varPtr);
     return;
   }
 
@@ -244,12 +286,12 @@ void IRGenerator::visitReturnNode(ReturnNode *node) {
     Builder->CreateRetVoid();
 }
 
-
 void IRGenerator::visitMemberAccess(ExprMemberAccess *node) {
   node->_struct->visit(this);
   auto structType = structTypeMap[node->structDef->_name];
   auto offset = node->structDef->membersOffset[node->_memberName];
-  current = Builder->CreateStructGEP(structType, current, offset, "struct access");
+  current =
+      Builder->CreateStructGEP(structType, current, offset, "struct access");
 }
 
 void IRGenerator::visitIndexAccess(ExprIndex *node) {
@@ -347,62 +389,157 @@ void IRGenerator::visitExprConstant(ExprConstantNode *node) {
   }
 }
 
-std::map<std::string, std::function<void(ExprBinaryNode *)>> binaryOpHandlers = {
-  { "+", [](ExprBinaryNode *node) {
-
-  } },
-  { "-", [](ExprBinaryNode *node) {
-
-  } },
-  { "*", [](ExprBinaryNode *node) {
-
-  } },
-  { "/", [](ExprBinaryNode *node) {
-
-  } },
-  { "%", [](ExprBinaryNode *node) {
-
-  } },
-  { ">>", [](ExprBinaryNode *node) {
-
-  } },
-  { "<<", [](ExprBinaryNode *node) {
-
-  } },
-  { ">", [](ExprBinaryNode *node) {
-
-  } },
-  { "<", [](ExprBinaryNode *node) {
-
-  } },
-  { ">=", [](ExprBinaryNode *node) {
-
-  } },
-  { "<=", [](ExprBinaryNode *node) {
-
-  } },
-  { "==", [](ExprBinaryNode *node) {
-
-  } },
-  { "&&", [](ExprBinaryNode *node) {
-
-  } },
-  { "||", [](ExprBinaryNode *node) {
-
-  } },
-  { "&", [](ExprBinaryNode *node) {
-
-  } },
-  { "|", [](ExprBinaryNode *node) {
-
-  } },
-  { "^", [](ExprBinaryNode *node) {
-
-  } },
-  { "+", [](ExprBinaryNode *node) {
-
-  } },
-};
-
 void IRGenerator::visitExprBinaryOp(ExprBinaryNode *node) {
+  static std::map<std::string, std::function<void(Value *, Value *)>>
+      binaryOpHandlers = {
+          {"+",
+           [this, node](Value *left, Value *right) {
+             if (DataType::isFloat(node->type->raw))
+               current = Builder->CreateFAdd(left, right, "add");
+             else
+               current = Builder->CreateAdd(left, right);
+           }},
+          {"-",
+           [this, node](Value *left, Value *right) {
+             if (DataType::isFloat(node->type->raw))
+               current = Builder->CreateFSub(left, right, "add");
+             else
+               current = Builder->CreateSub(left, right);
+           }},
+          {"*",
+           [this, node](Value *left, Value *right) {
+             if (DataType::isFloat(node->type->raw))
+               current = Builder->CreateFMul(left, right, "add");
+             else
+               current = Builder->CreateMul(left, right);
+           }},
+          {"/",
+           [this, node](Value *left, Value *right) {
+             if (DataType::isFloat(node->type->raw))
+               current = Builder->CreateFDiv(left, right, "add");
+             else
+               current = Builder->CreateSDiv(left, right);
+           }},
+          {"%",
+           [this, node](Value *left, Value *right) {
+             if (DataType::isFloat(node->type->raw))
+               current = Builder->CreateFRem(left, right, "add");
+             else
+               current = Builder->CreateSRem(left, right);
+           }},
+          {">>",
+           [this, node](Value *left, Value *right) {
+             current = Builder->CreateAShr(left, right);
+           }},
+          {"<<",
+           [this, node](Value *left, Value *right) {
+             current = Builder->CreateShl(left, right);
+           }},
+          {">",
+           [this, node](Value *left, Value *right) {
+             auto zero = getZero(node->type);
+             auto one = getOne(node->type);
+             auto isGreater = DataType::isFloat(node->type->raw)
+                                  ? Builder->CreateFCmpOGT(left, right)
+                                  : Builder->CreateICmpSGT(left, right);
+             current = Builder->CreateSelect(isGreater, one, zero);
+           }},
+          {"<",
+           [this, node](Value *left, Value *right) {
+             auto zero = getZero(node->type);
+             auto one = getOne(node->type);
+             auto isGreater = DataType::isFloat(node->type->raw)
+                                  ? Builder->CreateFCmpOLT(left, right)
+                                  : Builder->CreateICmpSLT(left, right);
+             current = Builder->CreateSelect(isGreater, one, zero);
+           }},
+          {">=",
+           [this, node](Value *left, Value *right) {
+             auto zero = getZero(node->type);
+             auto one = getOne(node->type);
+             auto isGreater = DataType::isFloat(node->type->raw)
+                                  ? Builder->CreateFCmpOGE(left, right)
+                                  : Builder->CreateICmpSGE(left, right);
+             current = Builder->CreateSelect(isGreater, one, zero);
+           }},
+          {"<=",
+           [this, node](Value *left, Value *right) {
+             auto zero = getZero(node->type);
+             auto one = getOne(node->type);
+             auto isGreater = DataType::isFloat(node->type->raw)
+                                  ? Builder->CreateFCmpOLE(left, right)
+                                  : Builder->CreateICmpSLE(left, right);
+             current = Builder->CreateSelect(isGreater, one, zero);
+           }},
+          {"==",
+           [this, node](Value *left, Value *right) {
+             auto zero = getZero(node->type);
+             auto one = getOne(node->type);
+             auto isGreater = DataType::isFloat(node->type->raw)
+                                  ? Builder->CreateFCmpOEQ(left, right)
+                                  : Builder->CreateICmpEQ(left, right);
+             current = Builder->CreateSelect(isGreater, one, zero);
+           }},
+          {"!=",
+           [this, node](Value *left, Value *right) {
+             auto zero = getZero(node->type);
+             auto one = getOne(node->type);
+             auto isGreater = DataType::isFloat(node->type->raw)
+                                  ? Builder->CreateFCmpONE(left, right)
+                                  : Builder->CreateICmpNE(left, right);
+             current = Builder->CreateSelect(isGreater, one, zero);
+           }},
+          {"&&",
+           [this, node](Value *left, Value *right) {
+             auto zero = getZero(node->type);
+
+             auto leftNonZero = DataType::isFloat(node->type->raw)
+                                    ? Builder->CreateFCmpONE(left, zero)
+                                    : Builder->CreateICmpNE(left, zero);
+             auto rightNonZero = DataType::isFloat(node->type->raw)
+                                     ? Builder->CreateFCmpONE(right, zero)
+                                     : Builder->CreateICmpNE(right, zero);
+             current = Builder->CreateAnd(leftNonZero, rightNonZero);
+           }},
+          {"||",
+           [this, node](Value *left, Value *right) {
+             auto zero = getZero(node->type);
+
+             auto leftNonZero = DataType::isFloat(node->type->raw)
+                                    ? Builder->CreateFCmpONE(left, zero)
+                                    : Builder->CreateICmpNE(left, zero);
+             auto rightNonZero = DataType::isFloat(node->type->raw)
+                                     ? Builder->CreateFCmpONE(right, zero)
+                                     : Builder->CreateICmpNE(right, zero);
+             current = Builder->CreateOr(leftNonZero, rightNonZero);
+           }},
+          {"&",
+           [this, node](Value *left, Value *right) {
+             current = Builder->CreateAnd(left, right);
+           }},
+          {"|",
+           [this, node](Value *left, Value *right) {
+             current = Builder->CreateOr(left, right);
+           }},
+          {"^",
+           [this, node](Value *left, Value *right) {
+             current = Builder->CreateXor(left, right);
+           }},
+          {"=",
+           [this, node](Value *left, Value *right) {
+             Builder->CreateStore(left, right);
+             current = right;
+           }},
+      };
+
+  node->_left->visit(this);
+  auto leftVal = current;
+  node->_right->visit(this);
+  auto rightVal = current;
+
+  auto leftCasted = getCast(leftVal, node->_left->type, node->type);
+  auto rightCasted = getCast(rightVal, node->_right->type, node->type);
+
+  auto handler = binaryOpHandlers[node->_op];
+  handler(leftCasted, rightCasted);
 }

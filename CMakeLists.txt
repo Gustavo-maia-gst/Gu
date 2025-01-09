@@ -26,6 +26,7 @@ set(SOURCES
     src/parser/parser.cpp
     src/semantic/validator.cpp
     src/codegen/translators/gu2c.cpp
+    src/codegen/llvm/IRGenerator.cpp
 )
 
 set(CMAKE_STATIC_LIBRARIES TRUE)

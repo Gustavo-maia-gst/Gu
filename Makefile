@@ -2,15 +2,20 @@ TARGET  = gu
 CC      = g++
 DEBUG   = -g
 OPT     = -O0
-WARN    = -Wall
-CCFLAGS = $(DEBUG) $(OPT) $(WARN)
+WARN    = -Wall -fexceptions
+
+CXXFLAGS = $(DEBUG) $(OPT) $(WARN)
+LLVM_CXXFLAGS := $(shell llvm-config --cxxflags)
+LLVM_LDFLAGS  := $(shell llvm-config --ldflags)
+LLVM_LIBS     := $(shell llvm-config --libs --system-libs)
 
 FILES = src/main.cpp \
         src/lexer/lexer.cpp \
 		src/parser/ast/ast.cpp \
         src/parser/parser.cpp \
 		src/semantic/validator.cpp \
-		src/codegen/translators/gu2c.cpp
+		src/codegen/translators/gu2c.cpp \
+		src/codegen/llvm/IRGenerator.cpp
 
 all: build/debug | $(FILES)
 	rm -rf build/debug/obj/*
@@ -18,10 +23,10 @@ all: build/debug | $(FILES)
 	for file in $(FILES); do \
 		filename=$${file%.*}; \
 		filename=$${filename//\//.}; \
-		$(CC) -c $(CCFLAGS) $$file -o build/debug/obj/"$$filename".o; \
+		$(CC) -c $(CXXFLAGS) $(LLVM_CXXFLAGS) $$file -o build/debug/obj/"$$filename".o; \
 	done
 
-	$(CC) $(CCFLAGS) build/debug/obj/*.o -o build/debug/bin/$(TARGET)
+	$(CC) $(CCFLAGS) $(LLVM_LDFLAGS) build/debug/obj/*.o -o build/debug/bin/$(TARGET) $(LLVM_LIBS)
 
 build/debug:
 	mkdir -p "build/debug/obj"
