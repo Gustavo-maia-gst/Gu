@@ -48,6 +48,7 @@ private:
   llvm::Function *function = nullptr;
 
   llvm::Type *getType(DataType *type);
+  llvm::Value *getZero(DataType *type);
   llvm::Value *getCondition(ExprNode *node, bool invert = false);
   llvm::Value *current;
 

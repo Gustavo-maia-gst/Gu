@@ -154,7 +154,7 @@ void Gu2CVisitor::visitIndexAccess(ExprIndex *node) {
 };
 
 void Gu2CVisitor::visitExprCall(ExprCallNode *node) {
-  node->_ref->visit(this);
+  writeText(node->func->_name);
   writeText("(");
   if (!node->_args.empty()) {
     node->_args[0]->visit(this);

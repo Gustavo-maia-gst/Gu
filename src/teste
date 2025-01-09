@@ -13,5 +13,7 @@ func main() -> int
     n1.val = 1;
     n2.val = 2;
 
+    n1.show();
+
     return n1.val + n2.val * n2.val || 1 + 2 = 4 ;
 }

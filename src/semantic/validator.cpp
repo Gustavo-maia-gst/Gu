@@ -157,8 +157,10 @@ void SemanticValidator::visitVarDef(VarDefNode *node) {
   if (function)
     function->localVars[node->_name] = node;
   else {
-    if (node->_defaultVal && node->_defaultVal->getNodeType() != NodeType::EXPR_CONSTANT)
-      compile_error("Default value in global variable should be constant", node);
+    if (node->_defaultVal &&
+        node->_defaultVal->getNodeType() != NodeType::EXPR_CONSTANT)
+      compile_error("Default value in global variable should be constant",
+                    node);
   }
 
   if (node->_defaultVal &&
@@ -172,7 +174,8 @@ void SemanticValidator::visitIf(IfNode *node) {
 
   auto exprType = node->_expr->type->raw;
 
-  if (DataType::isNumeric(exprType)) return;
+  if (DataType::isNumeric(exprType))
+    return;
   if (DataType::isAddress(exprType)) {
     node->_expr->type = DataType::build(RawDataType::LONG);
     return;
@@ -181,13 +184,9 @@ void SemanticValidator::visitIf(IfNode *node) {
   type_error("The condition type should be a numeric-based type", node);
 }
 
-void SemanticValidator::visitFor(ForNode *node) {
+void SemanticValidator::visitFor(ForNode *node) {}
 
-}
-
-void SemanticValidator::visitWhile(WhileNode *node) {
-
-}
+void SemanticValidator::visitWhile(WhileNode *node) {}
 
 void SemanticValidator::visitTypeDefNode(TypeDefNode *node) {
   node->visitChildren(this);
@@ -280,8 +279,8 @@ void SemanticValidator::visitExprConstant(ExprConstantNode *node) {
 void SemanticValidator::visitExprUnaryOp(ExprUnaryNode *node) {
   node->visitChildren(this);
 
-  switch (node->_opNum) {
-  case MULT: {
+  switch (node->_op[0]) {
+  case '*': {
     if (!DataType::isAddress(node->_expr->type->raw)) {
       compile_error("Dereference of non-pointer datatype", node);
       node->type = DataType::build(RawDataType::ERROR);
@@ -291,17 +290,33 @@ void SemanticValidator::visitExprUnaryOp(ExprUnaryNode *node) {
     node->type = node->_expr->type->inner;
     break;
   }
-  case B_AND: {
+  case '&': {
     if (node->_expr->getNodeType() == NodeType::EXPR_CONSTANT) {
-      compile_error("Dereference of non-pointer datatype", node);
+      compile_error("Reference of a constant value", node);
       node->type = DataType::build(RawDataType::ERROR);
       break;
     }
     node->type = DataType::buildPointer(node->_expr->type);
     break;
   }
-  default:
+  case '+': {
+    if (!DataType::isNumeric(node->type->raw)) {
+      type_error("Invalid operation + for type", node);
+      node->type = DataType::build(RawDataType::ERROR);
+    }
     node->type = node->_expr->type;
+    break;
+  }
+  case '-': {
+    if (!DataType::isNumeric(node->type->raw)) {
+      type_error("Invalid operation - for type", node);
+      node->type = DataType::build(RawDataType::ERROR);
+    }
+    node->type = node->_expr->type;
+    break;
+  }
+  case '!':
+    node->type = DataType::build(RawDataType::INT);
     break;
   }
 }
@@ -327,19 +342,19 @@ void SemanticValidator::visitMemberAccess(ExprMemberAccess *node) {
   }
 
   auto structName = node->_struct->type->ident;
-  auto structDef = resolveStruct(structName);
-  if (!structDef) {
+  node->structDef = resolveStruct(structName);
+  if (!node->structDef) {
     name_error("Struct " + structName + " does not exist", node);
     return;
   }
 
-  auto memberDef = structDef->membersDef.find(node->_memberName) !=
-                           structDef->membersDef.end()
-                       ? structDef->membersDef[node->_memberName]
+  auto memberDef = node->structDef->membersDef.find(node->_memberName) !=
+                           node->structDef->membersDef.end()
+                       ? node->structDef->membersDef[node->_memberName]
                        : nullptr;
-  auto funcDef = structDef->funcMembers.find(node->_memberName) !=
-                         structDef->funcMembers.end()
-                     ? structDef->funcMembers[node->_memberName]
+  auto funcDef = node->structDef->funcMembers.find(node->_memberName) !=
+                         node->structDef->funcMembers.end()
+                     ? node->structDef->funcMembers[node->_memberName]
                      : nullptr;
 
   if (!memberDef && !funcDef) {
@@ -352,7 +367,8 @@ void SemanticValidator::visitMemberAccess(ExprMemberAccess *node) {
   node->var = memberDef;
   node->func = funcDef;
 
-  node->type = memberDef ? memberDef->type : funcDef->retType;
+  node->type =
+      memberDef ? memberDef->type : DataType::build(RawDataType::FUNCTION);
 }
 
 void SemanticValidator::visitIndexAccess(ExprIndex *node) {
@@ -372,17 +388,31 @@ void SemanticValidator::visitIndexAccess(ExprIndex *node) {
 }
 
 void SemanticValidator::visitExprCall(ExprCallNode *node) {
-  node->visitChildren(this);
+  if (node->_ref->getNodeType() == NodeType::VAR_REF) {
+    auto funcName = ((ExprVarRefNode *)node->_ref)->_ident;
+    auto funcDef = resolveFunction(funcName);
+    if (!funcDef) {
+      name_error("Function " + funcName + " does not exists", node);
+      return;
+    }
 
-  if (node->_ref->type->raw != RawDataType::FUNCTION) {
+    node->func = funcDef;
+    node->type = funcDef->retType;
+  } else if (node->_ref->getNodeType() == NodeType::MEMBER_ACCESS) {
+    node->_ref->visit(this);
+    if (!node->_ref->func)
+      return;
+
+    auto _struct = ((ExprMemberAccess *)node->_ref)->_struct;
+    auto refToStruct =
+        new ExprUnaryNode(node->_line, node->_startCol, node, "&", 0, _struct);
+    refToStruct->visit(this);
+
+    node->_args.insert(node->_args.begin(), refToStruct);
+    node->func = node->_ref->func;
+    node->type = node->func->retType;
+  } else {
     compile_error("Calling non-function type", node);
-    node->type = DataType::build(RawDataType::ERROR);
-    return;
-  }
-  if (!node->func) {
-    unexpected_error(
-        "Function type expression does not contain func definition", node);
-    return;
   }
 
   if (node->_args.size() != node->func->_params.size()) {
@@ -392,7 +422,7 @@ void SemanticValidator::visitExprCall(ExprCallNode *node) {
   }
 
   for (int i = 0; i < node->_args.size(); i++)
-    if (node->_args[i]->type != node->func->_params[i]->type) {
+    if (!node->_args[i]->type->equals(node->func->_params[i]->type)) {
       type_error("Invalid type for argument " + std::to_string(i) +
                      " in function call",
                  node);

@@ -1,8 +1,10 @@
 #include "IRGenerator.h"
+#include <functional>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/InstrTypes.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/IR/Value.h>
 
 using namespace llvm;
 
@@ -52,16 +54,23 @@ Type *IRGenerator::getType(DataType *type) {
   return nullptr;
 }
 
+Value *IRGenerator::getZero(DataType *type) {
+  if (DataType::isFloat(type->raw))
+    return ConstantFP::get(getType(type), 0);
+  else
+    return ConstantInt::get(getType(type), 0);
+}
+
 Value *IRGenerator::getCondition(ExprNode *node, bool invert) {
   node->visit(this);
   Value *condition;
+
+  auto zero = getZero(node->type);
   if (DataType::isFloat((node->type->raw))) {
-    auto zero = ConstantFP::get(getType(node->type), 0);
     condition = invert ? Builder->CreateFCmpOEQ(current, zero)
                        : Builder->CreateFCmpUNE(current, current);
 
   } else {
-    auto zero = ConstantFP::get(getType(node->type), 0);
     condition = invert ? Builder->CreateICmpEQ(current, zero)
                        : Builder->CreateICmpNE(current, zero);
   }
@@ -94,6 +103,8 @@ void IRGenerator::visitFunction(FunctionNode *node) {
   }
 
   node->_body->visit(this);
+  if (node->retType->raw == RawDataType::VOID)
+    Builder->CreateRetVoid();
 
   for (auto [_, varDef] : node->localVars)
     varContextMap.erase(varDef);
@@ -233,21 +244,89 @@ void IRGenerator::visitReturnNode(ReturnNode *node) {
     Builder->CreateRetVoid();
 }
 
-void IRGenerator::visitExprBinaryOp(ExprBinaryNode *node) {}
 
-void IRGenerator::visitMemberAccess(ExprMemberAccess *node) {}
+void IRGenerator::visitMemberAccess(ExprMemberAccess *node) {
+  node->_struct->visit(this);
+  auto structType = structTypeMap[node->structDef->_name];
+  auto offset = node->structDef->membersOffset[node->_memberName];
+  current = Builder->CreateStructGEP(structType, current, offset, "struct access");
+}
 
-void IRGenerator::visitIndexAccess(ExprIndex *node) {}
+void IRGenerator::visitIndexAccess(ExprIndex *node) {
+  node->_inner->visit(this);
+  auto array = current;
+  node->_index->visit(this);
+  auto index = current;
 
-void IRGenerator::visitExprCall(ExprCallNode *node) {}
+  auto arrType = getType(node->_inner->type->inner);
 
-void IRGenerator::visitExprUnaryOp(ExprUnaryNode *node) {}
+  current = Builder->CreateGEP(arrType, array, index, "Index");
+}
+
+void IRGenerator::visitExprCall(ExprCallNode *node) {
+  std::vector<Value *> args;
+  for (auto arg : node->_args) {
+    arg->visit(this);
+    args.push_back(current);
+  }
+
+  auto func = functionMap[node->func];
+
+  Builder->CreateCall(func, args, "call");
+}
+
+void IRGenerator::visitExprUnaryOp(ExprUnaryNode *node) {
+  node->_expr->visit(this);
+  auto exprType = getType(node->_expr->type);
+  auto exprValue = current;
+
+  switch (node->_op[0]) {
+  case '-':
+    current = DataType::isFloat(node->_expr->type->raw)
+                  ? Builder->CreateFNeg(exprValue)
+                  : Builder->CreateNeg(exprValue);
+    break;
+  case '+': {
+    auto zero = getZero(node->_expr->type);
+
+    auto isNegative = DataType::isFloat(node->_expr->type->raw)
+                          ? Builder->CreateFCmpOLT(exprValue, zero)
+                          : Builder->CreateICmpSLT(exprValue, zero);
+    auto negated = DataType::isFloat(node->_expr->type->raw)
+                       ? Builder->CreateFNeg(exprValue)
+                       : Builder->CreateNeg(exprValue);
+    current =
+        Builder->CreateSelect(isNegative, negated, exprValue, "absolute value");
+    break;
+  }
+  case '*':
+    current = Builder->CreateLoad(exprType, exprValue, "derreferenced");
+    break;
+  case '&':
+    current = exprValue;
+    break;
+  case '!': {
+    auto zero = getZero(node->_expr->type);
+
+    auto one32 = Builder->getInt32(1);
+    auto zero32 = Builder->getInt32(0);
+
+    auto isZero = DataType::isFloat(node->_expr->type->raw)
+                      ? Builder->CreateFCmpOEQ(exprValue, zero)
+                      : Builder->CreateICmpEQ(exprValue, zero);
+
+    current = Builder->CreateSelect(isZero, one32, zero32);
+    break;
+  }
+  }
+}
 
 void IRGenerator::visitExprVarRef(ExprVarRefNode *node) {
   auto varDef = node->var;
   auto var = varContextMap[varDef];
 
-  if (!var.second) error("Invalid varRef");
+  if (!var.second)
+    error("Invalid varRef");
 
   current = Builder->CreateLoad(var.first, var.second, node->_ident);
 }
@@ -266,4 +345,64 @@ void IRGenerator::visitExprConstant(ExprConstantNode *node) {
   if (node->type->raw == RawDataType::ARRAY) {
     current = ConstantDataArray::getString(*TheContext, node->_rawValue);
   }
+}
+
+std::map<std::string, std::function<void(ExprBinaryNode *)>> binaryOpHandlers = {
+  { "+", [](ExprBinaryNode *node) {
+
+  } },
+  { "-", [](ExprBinaryNode *node) {
+
+  } },
+  { "*", [](ExprBinaryNode *node) {
+
+  } },
+  { "/", [](ExprBinaryNode *node) {
+
+  } },
+  { "%", [](ExprBinaryNode *node) {
+
+  } },
+  { ">>", [](ExprBinaryNode *node) {
+
+  } },
+  { "<<", [](ExprBinaryNode *node) {
+
+  } },
+  { ">", [](ExprBinaryNode *node) {
+
+  } },
+  { "<", [](ExprBinaryNode *node) {
+
+  } },
+  { ">=", [](ExprBinaryNode *node) {
+
+  } },
+  { "<=", [](ExprBinaryNode *node) {
+
+  } },
+  { "==", [](ExprBinaryNode *node) {
+
+  } },
+  { "&&", [](ExprBinaryNode *node) {
+
+  } },
+  { "||", [](ExprBinaryNode *node) {
+
+  } },
+  { "&", [](ExprBinaryNode *node) {
+
+  } },
+  { "|", [](ExprBinaryNode *node) {
+
+  } },
+  { "^", [](ExprBinaryNode *node) {
+
+  } },
+  { "+", [](ExprBinaryNode *node) {
+
+  } },
+};
+
+void IRGenerator::visitExprBinaryOp(ExprBinaryNode *node) {
 }

@@ -8,7 +8,6 @@ set(CMAKE_CXX_STANDARD 17)
 # Flags de compilação (Debug e Release)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 set(CMAKE_CXX_FLAGS_DEBUG "-g")
-set(CMAKE_CXX_FLAGS_RELEASE "-O0")
 
 # Encontrar o LLVM (configuração automática)
 find_package(LLVM REQUIRED CONFIG)

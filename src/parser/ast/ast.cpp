@@ -94,6 +94,18 @@ inline bool DataType::isInt(RawDataType &raw) {
          raw == RawDataType::INT || raw == RawDataType::LONG;
 }
 
+bool DataType::equals(DataType *other) {
+  if ((!inner && other->inner) || (inner && !other->inner))
+    return false;
+  if (raw != other->raw)
+    return false;
+  if (ident != other->ident)
+    return false;
+  if (inner && !inner->equals(other->inner))
+    return false;
+  return arrLength == other->arrLength;
+}
+
 bool DataType::isAddress(RawDataType &raw) {
   return raw == RawDataType::POINTER || raw == RawDataType::ARRAY;
 }
@@ -117,6 +129,7 @@ DataType *DataType::build(RawDataType raw) {
   auto datatype = new DataType();
   datatype->raw = raw;
   datatype->inner = nullptr;
+  datatype->arrLength = -1;
   typesRefs.push_back(datatype);
   return datatype;
 }

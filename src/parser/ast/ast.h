@@ -126,9 +126,7 @@ public:
   static DataType *fromString(std::string &str);
   static DataType *fromChar(std::string &ch);
 
-  bool operator==(const DataType &other) const {
-    return raw == other.raw && ident == other.ident && ident == other.ident;
-  }
+  bool equals(DataType *other);
 
 private:
   DataType();
@@ -186,11 +184,13 @@ public:
   TypeDefNode *_retTypeDef;
 
   std::map<std::string, VarDefNode *> localVars;
-  DataType *retType;
+  DataType *retType = nullptr;
 
   FunctionNode(int line, int startCol, AstNode *parent, std::string ident)
       : AstNode(NodeType::FUNCTION, line, startCol, parent) {
-    this->_name = ident;
+    _name = ident;
+    _body = nullptr;
+    _retTypeDef = nullptr;
   }
 };
 
@@ -224,7 +224,11 @@ public:
   BlockNode *_elseBody;
 
   IfNode(int line, int startCol, AstNode *parent)
-      : AstNode(NodeType::IF, line, startCol, parent) {}
+      : AstNode(NodeType::IF, line, startCol, parent) {
+    _expr = nullptr;
+    _ifBody = nullptr;
+    _elseBody = nullptr;
+  }
 };
 
 class WhileNode : public AstNode {
@@ -233,7 +237,10 @@ public:
   BlockNode *_body;
 
   WhileNode(int line, int startCol, AstNode *parent)
-      : AstNode(NodeType::WHILE, line, startCol, parent) {}
+      : AstNode(NodeType::WHILE, line, startCol, parent) {
+    _expr = nullptr;
+    _body = nullptr;
+  }
 };
 
 class ForNode : public AstNode {
@@ -244,7 +251,12 @@ public:
   BlockNode *_body;
 
   ForNode(int line, int startCol, AstNode *parent)
-      : AstNode(NodeType::FOR, line, startCol, parent) {}
+      : AstNode(NodeType::FOR, line, startCol, parent) {
+    _start = nullptr;
+    _cond = nullptr;
+    _body = nullptr;
+    _inc = nullptr;
+  }
 };
 
 class VarDefNode : public AstNode {
@@ -254,13 +266,15 @@ public:
   ExprNode *_defaultVal;
   bool _constant;
 
-  DataType *type;
+  DataType *type = nullptr;
 
   VarDefNode(int line, int startCol, AstNode *parent, std::string name,
              bool constant = false)
       : AstNode(NodeType::VAR_DEF, line, startCol, parent) {
     this->_name = name;
     _constant = constant;
+    _typeDef = nullptr;
+    _defaultVal = nullptr;
   }
 };
 
@@ -269,7 +283,9 @@ public:
   AstNode *target;
 
   BreakNode(int line, int startCol, AstNode *parent)
-      : AstNode(NodeType::BREAK, line, startCol, parent) {}
+      : AstNode(NodeType::BREAK, line, startCol, parent) {
+    target = nullptr;
+  }
 };
 
 class ReturnNode : public AstNode {
@@ -277,7 +293,9 @@ public:
   ExprNode *_expr;
 
   ReturnNode(int line, int startCol, AstNode *parent)
-      : AstNode(NodeType::RETURN, line, startCol, parent) {}
+      : AstNode(NodeType::RETURN, line, startCol, parent) {
+    _expr = nullptr;
+  }
 };
 
 class TypeDefNode : public AstNode {
@@ -313,7 +331,11 @@ public:
 
 private:
   TypeDefNode(int line, int startCol)
-      : AstNode(NodeType::TYPE_DEF, line, startCol, nullptr) {}
+      : AstNode(NodeType::TYPE_DEF, line, startCol, nullptr) {
+    _pointsTo = nullptr;
+    _arrayOf = nullptr;
+    dataType = nullptr;
+  }
 };
 
 class ExprNode : public AstNode {
@@ -325,6 +347,7 @@ public:
 
   ExprNode(NodeType nodeType, int line, int startCol, AstNode *parent)
       : AstNode(nodeType, line, startCol, parent) {
+    type = nullptr;
     var = nullptr;
     func = nullptr;
   }
@@ -366,8 +389,7 @@ public:
   ExprNode *_struct;
   std::string _memberName;
 
-  VarDefNode *var;
-  FunctionNode *func;
+  StructDefNode *structDef;
 
   ExprMemberAccess(int line, int startCol, AstNode *parent, ExprNode *_struct,
                    std::string memberName)
@@ -391,9 +413,9 @@ public:
 
   ExprCallNode(int line, int startCol, AstNode *parent, ExprNode *ref)
       : ExprNode(NodeType::FUNCCALL, line, startCol, parent) {
-    if (!_ref)
-
-      this->_ref = ref;
+    this->_ref = ref;
+    this->_children.push_back(ref);
+    ref->_parent = this;
   }
 };
 
