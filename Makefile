@@ -2,7 +2,7 @@ TARGET  = gu
 CC      = g++
 DEBUG   = -g
 OPT     = -O0
-WARN    = -Wall -fexceptions
+WARN    = -Wall
 
 CXXFLAGS = $(DEBUG) $(OPT) $(WARN)
 LLVM_CXXFLAGS := $(shell llvm-config --cxxflags)

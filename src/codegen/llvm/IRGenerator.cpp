@@ -2,21 +2,22 @@
 #include <functional>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
+#include <llvm/IR/GlobalValue.h>
+#include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/InstrTypes.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Value.h>
-#include <memory>
+#include <llvm/Support/raw_ostream.h>
+#include <set>
+#include <string>
+#include <utility>
 
 using namespace llvm;
 
-std::unique_ptr<LLVMContext> TheContext = std::make_unique<LLVMContext>();
-std::unique_ptr<llvm::IRBuilder<>> Builder =
-    std::make_unique<llvm::IRBuilder<>>(*TheContext);
-;
-std::unique_ptr<llvm::Module> TheModule =
-    std::make_unique<llvm::Module>("Program", *TheContext);
-;
+LLVMContext *TheContext = new LLVMContext();
+llvm::IRBuilder<> *Builder = new llvm::IRBuilder<>(*TheContext);
+llvm::Module *TheModule = new llvm::Module("Program", *TheContext);
 
 std::map<RawDataType, Type *> rawTypeMapper = {
     {RawDataType::CHAR, Type::getInt8Ty(*TheContext)},
@@ -25,6 +26,7 @@ std::map<RawDataType, Type *> rawTypeMapper = {
     {RawDataType::LONG, Type::getInt64Ty(*TheContext)},
     {RawDataType::FLOAT, Type::getFloatTy(*TheContext)},
     {RawDataType::DOUBLE, Type::getDoubleTy(*TheContext)},
+    {RawDataType::VOID, Type::getVoidTy(*TheContext)},
 };
 
 std::stack<BasicBlock *> breakTo;
@@ -33,6 +35,20 @@ std::map<std::string, StructType *> structTypeMap;
 std::map<FunctionNode *, Function *> functionMap;
 
 int funcCounter = 1;
+
+void IRGenerator::print() { TheModule->print(llvm::outs(), nullptr); }
+
+Value *IRGenerator::loadValue(ExprNode *node) {
+  node->visit(this);
+
+  std::set<NodeType> memoryAccessTypes = {
+      NodeType::VAR_REF, NodeType::INDEX_ACCESS, NodeType::MEMBER_ACCESS};
+
+  if (memoryAccessTypes.find(node->getNodeType()) != memoryAccessTypes.end())
+    return Builder->CreateLoad(getType(node->type), current);
+  else
+    return current;
+}
 
 Type *IRGenerator::getType(DataType *type) {
   if (!type->inner && type->raw != RawDataType::STRUCT) {
@@ -101,6 +117,7 @@ Value *IRGenerator::getCast(Value *value, DataType *original,
   }
 
   error("Invalid cast");
+  return nullptr;
 }
 
 Value *IRGenerator::getCondition(ExprNode *node, bool invert) {
@@ -110,7 +127,7 @@ Value *IRGenerator::getCondition(ExprNode *node, bool invert) {
   auto zero = getZero(node->type);
   if (DataType::isFloat((node->type->raw))) {
     condition = invert ? Builder->CreateFCmpOEQ(current, zero)
-                       : Builder->CreateFCmpUNE(current, current);
+                       : Builder->CreateFCmpUNE(current, zero);
 
   } else {
     condition = invert ? Builder->CreateICmpEQ(current, zero)
@@ -123,9 +140,12 @@ Value *IRGenerator::getCondition(ExprNode *node, bool invert) {
 void IRGenerator::visitProgram(ProgramNode *node) { node->visitChildren(this); }
 
 void IRGenerator::visitFunction(FunctionNode *node) {
+  std::set<std::string> paramNames;
   std::vector<Type *> paramTypes;
-  for (auto param : node->_params)
+  for (auto param : node->_params) {
     paramTypes.push_back(getType(param->type));
+    paramNames.insert(param->_name);
+  }
 
   auto retType = getType(node->retType);
 
@@ -138,9 +158,24 @@ void IRGenerator::visitFunction(FunctionNode *node) {
   functionMap[node] = func;
   function = func;
 
-  for (auto [_, varDef] : node->localVars) {
+  auto block = BasicBlock::Create(*TheContext, node->_name, func);
+  Builder->SetInsertPoint(block);
+
+  for (ulint i = 0; i < node->_params.size(); i++) {
+    auto arg = func->getArg(i);
+    auto paramDef = node->_params[i];
+    auto paramType = paramTypes[i];
+
+    arg->setName(paramDef->_name);
+    varContextMap[paramDef] = std::make_pair(paramType, arg);
+  }
+
+  for (auto &[varName, varDef] : node->localVars) {
+    if (paramNames.find(varName) != paramNames.end())
+      continue;
+
     auto varType = getType(varDef->type);
-    auto allocVar = Builder->CreateAlloca(varType, nullptr, varDef->_name);
+    auto allocVar = Builder->CreateAlloca(varType, nullptr, varName);
     varContextMap[varDef] = std::make_pair(varType, allocVar);
   }
 
@@ -148,7 +183,7 @@ void IRGenerator::visitFunction(FunctionNode *node) {
   if (node->retType->raw == RawDataType::VOID)
     Builder->CreateRetVoid();
 
-  for (auto [_, varDef] : node->localVars)
+  for (auto &[_, varDef] : node->localVars)
     varContextMap.erase(varDef);
 
   function = nullptr;
@@ -159,11 +194,11 @@ void IRGenerator::visitStructDef(StructDefNode *node) {
   structTypeMap[node->_name] = structType;
 
   std::vector<Type *> memberTypes;
-  for (auto [_, memberDef] : node->membersDef)
+  for (auto &[_, memberDef] : node->membersDef)
     memberTypes.push_back(getType(memberDef->type));
   structType->setBody(memberTypes);
 
-  for (auto [_, funcNode] : node->funcMembers) {
+  for (auto &[_, funcNode] : node->funcMembers) {
     funcNode->visit(this);
   }
 }
@@ -172,7 +207,7 @@ void IRGenerator::visitIf(IfNode *node) {
   auto ifBlock = BasicBlock::Create(*TheContext, "ifBlock", function);
   auto endBlock = BasicBlock::Create(*TheContext, "endBlock", function);
   auto elseBlock = node->_elseBody
-                       ? BasicBlock::Create(*TheContext, "ifBlock", function)
+                       ? BasicBlock::Create(*TheContext, "elseBlock", function)
                        : endBlock;
 
   auto condition = getCondition(node->_expr);
@@ -276,22 +311,23 @@ void IRGenerator::visitBreakNode(BreakNode *node) {
 }
 
 void IRGenerator::visitReturnNode(ReturnNode *node) {
-  current = nullptr;
-  if (node->_expr)
-    node->_expr->visit(this);
-
-  if (current)
+  if (node->_expr) {
+    auto retVal = loadValue(node->_expr);
+    current = getCast(retVal, node->_expr->type, node->retType);
     Builder->CreateRet(current);
-  else
-    Builder->CreateRetVoid();
+    return;
+  }
+
+  Builder->CreateRetVoid();
 }
 
 void IRGenerator::visitMemberAccess(ExprMemberAccess *node) {
   node->_struct->visit(this);
   auto structType = structTypeMap[node->structDef->_name];
   auto offset = node->structDef->membersOffset[node->_memberName];
+
   current =
-      Builder->CreateStructGEP(structType, current, offset, "struct access");
+      Builder->CreateStructGEP(structType, current, offset, node->_memberName);
 }
 
 void IRGenerator::visitIndexAccess(ExprIndex *node) {
@@ -300,9 +336,10 @@ void IRGenerator::visitIndexAccess(ExprIndex *node) {
   node->_index->visit(this);
   auto index = current;
 
-  auto arrType = getType(node->_inner->type->inner);
+  auto arrType = getType(node->_inner->type);
 
-  current = Builder->CreateGEP(arrType, array, index, "Index");
+  current = Builder->CreateGEP(arrType, array, {Builder->getInt32(0), index},
+                               "index");
 }
 
 void IRGenerator::visitExprCall(ExprCallNode *node) {
@@ -314,13 +351,12 @@ void IRGenerator::visitExprCall(ExprCallNode *node) {
 
   auto func = functionMap[node->func];
 
-  Builder->CreateCall(func, args, "call");
+  current = Builder->CreateCall(func, args, "call");
 }
 
 void IRGenerator::visitExprUnaryOp(ExprUnaryNode *node) {
-  node->_expr->visit(this);
   auto exprType = getType(node->_expr->type);
-  auto exprValue = current;
+  auto exprValue = loadValue(node->_expr);
 
   switch (node->_op[0]) {
   case '-':
@@ -366,26 +402,43 @@ void IRGenerator::visitExprUnaryOp(ExprUnaryNode *node) {
 void IRGenerator::visitExprVarRef(ExprVarRefNode *node) {
   auto varDef = node->var;
   auto var = varContextMap[varDef];
-
-  if (!var.second)
+  if (!var.first || !var.second)
     error("Invalid varRef");
 
-  current = Builder->CreateLoad(var.first, var.second, node->_ident);
+  current = var.second;
 }
 
 void IRGenerator::visitExprConstant(ExprConstantNode *node) {
   if (rawTypeMapper.find(node->type->raw) != rawTypeMapper.end()) {
     auto type = rawTypeMapper[node->type->raw];
-    if (type->isFloatingPointTy())
-      current = ConstantInt::get(type, std::stoi(node->_rawValue));
-    else
-      current = ConstantFP::get(type, std::stod(node->_rawValue));
+    if (type->isFloatingPointTy()) {
+      double value = std::stod(node->_rawValue);
+      current = ConstantFP::get(type, value);
+    } else {
+      std::string strVal = "";
+      for (char c : node->_rawValue) {
+        if (c == '.')
+          break;
+        strVal += c;
+      }
+      long value = std::stoi(strVal);
+      current = ConstantInt::get(type, value);
+    }
 
     return;
   }
 
-  if (node->type->raw == RawDataType::ARRAY) {
-    current = ConstantDataArray::getString(*TheContext, node->_rawValue);
+  if (node->type->raw == RawDataType::POINTER) {
+    auto stringPtr = ConstantDataArray::getString(*TheContext, node->_rawValue);
+    current =
+        new GlobalVariable(stringPtr->getType(), true,
+                           GlobalValue::ExternalLinkage, stringPtr, "string");
+  } else if (node->type->raw == RawDataType::ARRAY) {
+    ulint i = 0;
+    std::string str = "";
+    while (i < node->_rawValue.size() && i < node->type->size)
+      str += node->_rawValue[i++];
+    current = ConstantDataArray::getString(*TheContext, str);
   }
 }
 
@@ -525,21 +578,28 @@ void IRGenerator::visitExprBinaryOp(ExprBinaryNode *node) {
            [this, node](Value *left, Value *right) {
              current = Builder->CreateXor(left, right);
            }},
-          {"=",
-           [this, node](Value *left, Value *right) {
-             Builder->CreateStore(left, right);
-             current = right;
-           }},
       };
 
-  node->_left->visit(this);
-  auto leftVal = current;
-  node->_right->visit(this);
-  auto rightVal = current;
+  if (node->_op == "=") {
+    auto rightVal = loadValue(node->_right);
+    node->_left->visit(this);
+    auto leftPtr = current;
+    Builder->CreateStore(rightVal, leftPtr);
+    current = rightVal;
+    return;
+  }
+
+  auto leftVal = loadValue(node->_left);
+  auto rightVal = loadValue(node->_right);
 
   auto leftCasted = getCast(leftVal, node->_left->type, node->type);
   auto rightCasted = getCast(rightVal, node->_right->type, node->type);
 
   auto handler = binaryOpHandlers[node->_op];
   handler(leftCasted, rightCasted);
+}
+
+void IRGenerator::error(std::string err) {
+  std::cerr << err << std::endl;
+  exit(1);
 }

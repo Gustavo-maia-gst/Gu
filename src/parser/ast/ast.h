@@ -7,6 +7,8 @@
 #include <sys/types.h>
 #include <vector>
 
+typedef long unsigned int ulint;
+
 enum class NodeType {
   PROGRAM,
   FUNCTION,
@@ -107,8 +109,8 @@ public:
   DataType *inner;
   std::string ident;
 
-  int size;
-  int arrLength;
+  ulint size;
+  ulint arrLength;
 
   static DataType *getResultType(DataType *left, std::string op,
                                  DataType *right);
@@ -291,6 +293,7 @@ public:
 class ReturnNode : public AstNode {
 public:
   ExprNode *_expr;
+  DataType *retType;
 
   ReturnNode(int line, int startCol, AstNode *parent)
       : AstNode(NodeType::RETURN, line, startCol, parent) {
@@ -371,8 +374,10 @@ public:
   ExprIndex(int line, int startCol, AstNode *parent, ExprNode *inner,
             ExprNode *index)
       : ExprNode(NodeType::INDEX_ACCESS, line, startCol, parent) {
-    if (!inner || !index)
-      throw std::runtime_error("inner and index cannot be null");
+    if (!inner || !index) {
+      std::cerr << "Was not possible to open the file\n";
+      exit(1);
+    }
 
     _inner = inner;
     inner->_parent = this;
@@ -394,8 +399,10 @@ public:
   ExprMemberAccess(int line, int startCol, AstNode *parent, ExprNode *_struct,
                    std::string memberName)
       : ExprNode(NodeType::MEMBER_ACCESS, line, startCol, parent) {
-    if (!_struct)
-      throw std::runtime_error("struct cannot be null");
+    if (!_struct) {
+      std::cerr << "struct cannot be null\n";
+      exit(1);
+    }
 
     this->_memberName = memberName;
     this->_struct = _struct;

@@ -6,6 +6,7 @@ std::map<std::string, int> baseTypeMapper = {
     {"var", ProgramTokenType::VAR},
     {"const", ProgramTokenType::CONST},
     {"if", ProgramTokenType::IF},
+    {"else", ProgramTokenType::ELSE},
     {"while", ProgramTokenType::WHILE},
     {"for", ProgramTokenType::FOR},
     {"return", ProgramTokenType::RETURN},
@@ -414,6 +415,9 @@ ExprNode *AstParser::parseExpr(AstNode *parent) {
       operands.push(node);
       return;
     }
+    lexer->unget();
+
+    node->_args.push_back(parseExpr(node));
 
     while ((lexer->get()).mappedType != CLOSE_PAR) {
       lexer->unget();

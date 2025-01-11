@@ -1,7 +1,7 @@
+#include "codegen/llvm/IRGenerator.h"
 #include "lexer/lexer.h"
 #include "parser/parser.h"
 #include "semantic/validator.h"
-#include "codegen/llvm/IRGenerator.h"
 
 int main() {
   std::string filename = "/home/gustavo/Projects/gu/src/teste";
@@ -21,8 +21,10 @@ int main() {
     exit(1);
   }
 
-  auto irGen = new IRGenerator();
-  program->visit(irGen);
+  auto codegen = new IRGenerator();
+  program->visit(codegen);
+
+  codegen->print();
 
   return 0;
 }

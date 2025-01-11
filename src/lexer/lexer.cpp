@@ -1,5 +1,6 @@
 #include "lexer.h"
 #include <cctype>
+#include <iostream>
 #include <stdexcept>
 #include <string>
 #include <unordered_set>
@@ -17,8 +18,10 @@ Lexer::~Lexer() { delete this->stream; }
 
 Lexer *Lexer::fromFile(std::string &path) {
   auto fileStream = new std::ifstream(path);
-  if (!fileStream)
-    throw new std::runtime_error("Was not possible to open the file");
+  if (!fileStream) {
+    std::cerr << "Was not possible to open the file\n";
+    exit(1);
+  }
 
   auto sc = new Lexer;
   sc->stream = fileStream;
@@ -28,8 +31,10 @@ Lexer *Lexer::fromFile(std::string &path) {
 Lexer *Lexer::fromStream(std::istream *stream) {
   auto sc = new Lexer;
   sc->stream = stream;
-  if (!sc->stream)
-    throw new std::runtime_error("Was not possible to open the file");
+  if (!sc->stream) {
+    std::cerr << "Was not possible to open the file\n";
+    exit(1);
+  }
   return sc;
 }
 
@@ -37,13 +42,12 @@ void Lexer::setTypeMapper(std::map<std::string, int> *tokenMapper) {
   this->tokenMapper = tokenMapper;
 }
 
-const Token &Lexer::look() {
-  return current;
-}
+const Token &Lexer::look() { return current; }
 
 void Lexer::unget() {
   if (ungetted) {
-    throw new std::runtime_error("Ungetted two tokens");
+    std::cerr << "Ungetted two tokens\n";
+    exit(1);
   }
   ungetted = true;
 }
@@ -215,8 +219,10 @@ bool Lexer::reloadBuffer() {
 }
 
 void inline Lexer::error(std::string msg) {
-  throw new std::runtime_error("lexer: " + msg + " | " + std::to_string(line) +
-                               ":" + std::to_string(column));
+
+  std::cerr << "lexer: " + msg + " | " + std::to_string(line) + ":" +
+                   std::to_string(column) + "\n";
+  exit(1);
 }
 
 void inline Lexer::passBlanks() {

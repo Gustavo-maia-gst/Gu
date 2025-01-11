@@ -99,11 +99,11 @@ bool DataType::equals(DataType *other) {
     return false;
   if (raw != other->raw)
     return false;
-  if (ident != other->ident)
+  if (raw == RawDataType::STRUCT && ident != other->ident)
     return false;
   if (inner && !inner->equals(other->inner))
     return false;
-  return arrLength == other->arrLength;
+  return true;
 }
 
 bool DataType::isAddress(RawDataType &raw) {
@@ -130,6 +130,7 @@ DataType *DataType::build(RawDataType raw) {
   datatype->raw = raw;
   datatype->inner = nullptr;
   datatype->arrLength = -1;
+  datatype->size = sizesMap[raw];
   typesRefs.push_back(datatype);
   return datatype;
 }
@@ -140,7 +141,6 @@ DataType *DataType::buildPointer(DataType *type) {
 
   auto datatype = build(RawDataType::POINTER);
   datatype->inner = type;
-  datatype->size = 8;
   return datatype;
 }
 
@@ -183,15 +183,33 @@ DataType *DataType::build(TypeDefNode *node) {
 }
 
 DataType *DataType::fromNumber(std::string &num) {
-  bool isDouble = false;
+  bool isFloat = false;
 
   for (char c : num)
     if (c == '.')
-      isDouble = true;
+      isFloat = true;
 
-  auto dataType = build(isDouble ? RawDataType::DOUBLE : RawDataType::LONG);
+  DataType *dataType;
+
+  if (isFloat) {
+    double val = std::stod(num);
+    if (((float)val) == val)
+      dataType = build(RawDataType::FLOAT);
+    else
+      dataType = build(RawDataType::DOUBLE);
+  } else {
+    long val = std::stol(num);
+    if (val < 0x7f)
+      dataType = build(RawDataType::CHAR);
+    else if (val < 0x7fff)
+      dataType = build(RawDataType::SHORT);
+    else if (val < 0x7fffffff)
+      dataType = build(RawDataType::INT);
+    else
+      dataType = build(RawDataType::LONG);
+  }
+
   dataType->ident = num;
-  dataType->size = 8;
 
   return dataType;
 }
@@ -209,7 +227,6 @@ DataType *DataType::fromChar(std::string &ch) {
   int c = ch[0];
   auto dataType = build(RawDataType::CHAR);
   dataType->ident = std::to_string(c);
-  dataType->size = 1;
   return dataType;
 }
 
@@ -219,8 +236,9 @@ DataType *DataType::getResultType(DataType *left, std::string op,
     return DataType::build(RawDataType::ERROR);
 
   if (op == "=") {
-    if (left == right)
+    if (left->equals(right))
       return left;
+
     if (left->raw == RawDataType::POINTER && DataType::isAddress(right->raw)) {
       if (left->inner->raw == RawDataType::CHAR)
         return left;
@@ -228,8 +246,8 @@ DataType *DataType::getResultType(DataType *left, std::string op,
         return left;
       return DataType::build(RawDataType::ERROR);
     }
-    if (left->raw == RawDataType::ARRAY && right->raw == RawDataType::ARRAY) {
-      if (left == right)
+    if (left->raw == RawDataType::ARRAY && (right->raw == RawDataType::ARRAY)) {
+      if (left->inner->equals(right->inner))
         return left;
     }
   }
@@ -242,9 +260,6 @@ DataType *DataType::getResultType(DataType *left, std::string op,
     return DataType::build(RawDataType::ERROR);
 
   if (isNumeric(left->raw) && isNumeric(right->raw)) {
-    if (op == "=")
-      return left;
-
     if (left->raw == RawDataType::DOUBLE)
       return left;
     if (left->raw == RawDataType::DOUBLE)

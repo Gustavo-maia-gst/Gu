@@ -16,7 +16,7 @@ void Gu2CVisitor::visitFunction(FunctionNode *node) {
 
   if (!node->_params.empty()) {
     node->_params[0]->visit(this);
-    for (int i = 1; i < node->_params.size(); i++) {
+    for (ulint i = 1; i < node->_params.size(); i++) {
       writeText(", ");
       node->_params[i]->visit(this);
     }
@@ -31,14 +31,14 @@ void Gu2CVisitor::visitFunction(FunctionNode *node) {
 
 void Gu2CVisitor::visitStructDef(StructDefNode *node) {
   writeText("struct " + node->_name + " {");
-  for (auto [_, member] : node->membersDef) {
+  for (auto &[_, member] : node->membersDef) {
     writeText("\n\t");
     member->visit(this);
     writeText(";");
   }
   writeText("\n}\n\n");
 
-  for (auto [_, func] : node->funcMembers)
+  for (auto &[_, func] : node->funcMembers)
     if (func)
         func->visit(this);
 };
@@ -158,7 +158,7 @@ void Gu2CVisitor::visitExprCall(ExprCallNode *node) {
   writeText("(");
   if (!node->_args.empty()) {
     node->_args[0]->visit(this);
-    for (int i = 1; i < node->_args.size(); i++) {
+    for (ulint i = 1; i < node->_args.size(); i++) {
       writeText(", ");
       node->_args[i]->visit(this);
     }

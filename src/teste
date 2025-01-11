@@ -1,19 +1,11 @@
-struct Number {
-    val: int;
-
-    func show(this: *Number) -> int {
-        return *this.val;
-    };
-}
-
-func main() -> int
+func main() -> void
 {
-    var n1: Number, n2: Number;
+    var arr: int[32], i: int;
 
-    n1.val = 1;
-    n2.val = 2;
+    var soma: int = 0;
+    for (i = 0; i < 32; i = i + 1) {
+        soma = soma + arr[i];
+    }
 
-    n1.show();
-
-    return n1.val + n2.val * n2.val || 1 + 2 = 4 ;
+    return;
 }

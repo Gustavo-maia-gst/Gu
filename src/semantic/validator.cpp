@@ -2,6 +2,10 @@
 
 const std::string MAIN_FUNC = "main";
 
+inline bool isValidConditionType(DataType *type) {
+  return DataType::isNumeric(type->raw) || DataType::isAddress(type->raw);
+}
+
 SemanticValidator::SemanticValidator() {
   function = nullptr;
   program = nullptr;
@@ -163,10 +167,14 @@ void SemanticValidator::visitVarDef(VarDefNode *node) {
                     node);
   }
 
-  if (node->_defaultVal &&
-      DataType::getResultType(node->type, "=", node->_defaultVal->type) !=
-          node->type)
-    type_error("non-compatible type assignment", node);
+  if (node->_defaultVal) {
+    if (DataType::getResultType(node->type, "=", node->_defaultVal->type) !=
+        node->type)
+      type_error("non-compatible type assignment", node);
+
+    if (node->_defaultVal->getNodeType() == NodeType::EXPR_CONSTANT)
+      node->_defaultVal->type = node->type;
+  }
 }
 
 void SemanticValidator::visitIf(IfNode *node) {
@@ -184,9 +192,19 @@ void SemanticValidator::visitIf(IfNode *node) {
   type_error("The condition type should be a numeric-based type", node);
 }
 
-void SemanticValidator::visitFor(ForNode *node) {}
+void SemanticValidator::visitFor(ForNode *node) {
+  node->visitChildren(this);
+  if (!isValidConditionType(node->_cond->type) &&
+      node->_cond->type->raw != RawDataType::VOID)
+    compile_error("Invalid condition in for", node);
+}
 
-void SemanticValidator::visitWhile(WhileNode *node) {}
+void SemanticValidator::visitWhile(WhileNode *node) {
+  node->visitChildren(this);
+  if (!isValidConditionType(node->_expr->type) &&
+      node->_expr->type->raw != RawDataType::VOID)
+    compile_error("Invalid condition in while", node);
+}
 
 void SemanticValidator::visitTypeDefNode(TypeDefNode *node) {
   node->visitChildren(this);
@@ -228,10 +246,11 @@ void SemanticValidator::visitReturnNode(ReturnNode *node) {
   }
 
   auto funcRetType = function->_retTypeDef->dataType;
-  if (DataType::getResultType(funcRetType, "=", node->_expr->type) !=
-      funcRetType) {
+  auto exprType =
+      node->_expr ? node->_expr->type : DataType::build(RawDataType::VOID);
+  if (DataType::getResultType(funcRetType, "=", exprType) != funcRetType)
     type_error("Incompatible return type", node);
-  }
+  node->retType = funcRetType;
 }
 
 void SemanticValidator::visitExprVarRef(ExprVarRefNode *node) {
@@ -330,6 +349,17 @@ void SemanticValidator::visitExprBinaryOp(ExprBinaryNode *node) {
       (node->_left->type != node->_right->type)) {
     type_error("Expression with invalid types for operator " + node->_op, node);
   }
+
+  if (node->_right->getNodeType() == NodeType::EXPR_CONSTANT &&
+      node->type->raw != RawDataType::ERROR) {
+    node->type = node->_left->type;
+    node->_right->type = node->type;
+  }
+  if (node->_left->getNodeType() == NodeType::EXPR_CONSTANT &&
+      node->type->raw != RawDataType::ERROR) {
+    node->type = node->_right->type;
+    node->_left->type = node->type;
+  }
 }
 
 void SemanticValidator::visitMemberAccess(ExprMemberAccess *node) {
@@ -383,6 +413,8 @@ void SemanticValidator::visitIndexAccess(ExprIndex *node) {
     type_error("Indexing with non-int type", node);
     return;
   }
+  if (node->_index->type->size < 32)
+    node->_index->type = DataType::build(RawDataType::INT);
 
   node->type = node->_inner->type->inner;
 }
@@ -400,13 +432,23 @@ void SemanticValidator::visitExprCall(ExprCallNode *node) {
     node->type = funcDef->retType;
   } else if (node->_ref->getNodeType() == NodeType::MEMBER_ACCESS) {
     node->_ref->visit(this);
-    if (!node->_ref->func)
+    if (node->_ref->type->raw == RawDataType::ERROR) {
+      node->type = node->_ref->type;
       return;
+    }
 
-    auto _struct = ((ExprMemberAccess *)node->_ref)->_struct;
+    auto memberNode = (ExprMemberAccess *)node->_ref;
+    auto _struct = memberNode->_struct;
+
+    if (!node->_ref->func) {
+      name_error("Function " + memberNode->_memberName +
+                     " does not exists on struct " + _struct->type->ident,
+                 node);
+      return;
+    }
+
     auto refToStruct =
         new ExprUnaryNode(node->_line, node->_startCol, node, "&", 0, _struct);
-    refToStruct->visit(this);
 
     node->_args.insert(node->_args.begin(), refToStruct);
     node->func = node->_ref->func;
@@ -421,13 +463,16 @@ void SemanticValidator::visitExprCall(ExprCallNode *node) {
     return;
   }
 
-  for (int i = 0; i < node->_args.size(); i++)
+  for (ulint i = 0; i < node->_args.size(); i++) {
+    node->_args[i]->visit(this);
+
     if (!node->_args[i]->type->equals(node->func->_params[i]->type)) {
       type_error("Invalid type for argument " + std::to_string(i) +
                      " in function call",
                  node);
       return;
     }
+  }
 }
 
 void SemanticValidator::unexpected_error(std::string msg, AstNode *node) {

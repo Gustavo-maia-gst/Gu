@@ -5,20 +5,19 @@ set(TARGET gu)
 
 set(CMAKE_CXX_STANDARD 17)
 
-# Flags de compilação (Debug e Release)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 set(CMAKE_CXX_FLAGS_DEBUG "-g")
+set(CMAKE_CXX_FLAGS_RELEASE "-O2")
 
-# Encontrar o LLVM (configuração automática)
 find_package(LLVM REQUIRED CONFIG)
 
-# Incluir diretórios do LLVM
+message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
+message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
+
 include_directories(${LLVM_INCLUDE_DIRS})
+separate_arguments(LLVM_DEFINITIONS_LIST NATIVE_COMMAND ${LLVM_DEFINITIONS})
+add_definitions(${LLVM_DEFINITIONS_LIST})
 
-# Definir as definições do LLVM
-add_definitions(${LLVM_DEFINITIONS})
-
-# Fontes do projeto
 set(SOURCES
     src/main.cpp
     src/lexer/lexer.cpp
@@ -29,25 +28,19 @@ set(SOURCES
     src/codegen/llvm/IRGenerator.cpp
 )
 
-set(CMAKE_STATIC_LIBRARIES TRUE)
-set(CMAKE_EXE_LINKER_FLAGS "-static")
+#set(CMAKE_EXE_LINKER_FLAGS "-static")
 
-# Diretórios de build
 set(OBJ_DIR ${CMAKE_BINARY_DIR}/obj)
 set(BIN_DIR ${CMAKE_BINARY_DIR}/bin)
 
-# Criar diretórios
 file(MAKE_DIRECTORY ${OBJ_DIR} ${BIN_DIR})
 
-# Adicionar o executável
 add_executable(${TARGET} ${SOURCES})
 
-# Definir propriedades do alvo
+llvm_map_components_to_libnames(LLVM_LIBS support core irreader)
+target_link_libraries(${TARGET} ${LLVM_LIBS})
+
 set_target_properties(${TARGET} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${BIN_DIR}
-    ARCHIVE_OUTPUT_DIRECTORY ${OBJ_DIR}
 )
-
-# Linkar com as bibliotecas do LLVM e componentes necessários
-target_link_libraries(${TARGET} ${LLVM_LIBRARIES})
 
