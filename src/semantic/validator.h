@@ -12,7 +12,7 @@
 
 class SemanticValidator : public BaseVisitor {
 public:
-  SemanticValidator();
+  SemanticValidator(bool validateMain);
 
   void visitProgram(ProgramNode *node) override;
   void visitFunction(FunctionNode *node) override;
@@ -39,6 +39,7 @@ public:
 
 private:
   std::vector<std::string> errors;
+  bool validateMain = true;
 
   void unexpected_error(std::string msg, AstNode *node);
   void compile_error(std::string msg, AstNode *node);

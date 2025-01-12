@@ -108,8 +108,25 @@ void Lexer::nextToken_String() {
   while (lookChar() && lookChar() != '"') {
     char c = getChar();
     if (c == '\\') {
-      s += getChar();
-      continue;
+      c = getChar();
+      switch (c) {
+      case 'n':
+        c = '\n';
+        break;
+      case 'b':
+        c = '\b';
+        break;
+      case 't':
+        c = '\t';
+        break;
+      case 'r':
+        c = '\r';
+        break;
+      case '0':
+        c = '\0';
+        break;
+      default:;
+      }
     }
 
     s += c;
@@ -137,12 +154,16 @@ void Lexer::nextToken_Char() {
     switch (c) {
     case 'n':
       c = '\n';
+      break;
     case 'b':
       c = '\b';
+      break;
     case 't':
       c = '\t';
+      break;
     case '0':
       c = '\0';
+      break;
     default:;
     }
   }

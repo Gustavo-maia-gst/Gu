@@ -1,28 +1,35 @@
 #include "assembler.h"
 #include <lld/Common/Driver.h>
 #include <llvm/ADT/ArrayRef.h>
+#include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Type.h>
+#include <llvm/Support/CodeGen.h>
+#include <llvm/Support/raw_ostream.h>
 #include <llvm/TargetParser/Triple.h>
+#include <ostream>
 #include <vector>
 
 using namespace llvm;
 
-LLVMContext *TheContext = new LLVMContext();
-llvm::IRBuilder<> *Builder = new llvm::IRBuilder<>(*TheContext);
-std::unique_ptr<llvm::Module> TheModule =
-    std::make_unique<Module>("Program", *TheContext);
+Assembler::Assembler(bool withEntrypoint) {
+  this->withEntrypoint = withEntrypoint;
 
-std::map<RawDataType, Type *> rawTypeMapper = {
-    {RawDataType::CHAR, Type::getInt8Ty(*TheContext)},
-    {RawDataType::SHORT, Type::getInt16Ty(*TheContext)},
-    {RawDataType::INT, Type::getInt32Ty(*TheContext)},
-    {RawDataType::LONG, Type::getInt64Ty(*TheContext)},
-    {RawDataType::FLOAT, Type::getFloatTy(*TheContext)},
-    {RawDataType::DOUBLE, Type::getDoubleTy(*TheContext)},
-    {RawDataType::VOID, Type::getVoidTy(*TheContext)},
-};
+  TheContext = new LLVMContext();
+  Builder = new llvm::IRBuilder<>(*TheContext);
+  TheModule = std::make_unique<Module>("Program", *TheContext);
+
+  rawTypeMapper = {
+      {RawDataType::CHAR, Type::getInt8Ty(*TheContext)},
+      {RawDataType::SHORT, Type::getInt16Ty(*TheContext)},
+      {RawDataType::INT, Type::getInt32Ty(*TheContext)},
+      {RawDataType::LONG, Type::getInt64Ty(*TheContext)},
+      {RawDataType::FLOAT, Type::getFloatTy(*TheContext)},
+      {RawDataType::DOUBLE, Type::getDoubleTy(*TheContext)},
+      {RawDataType::VOID, Type::getVoidTy(*TheContext)},
+  };
+}
 
 std::stack<BasicBlock *> breakTo;
 std::map<VarDefNode *, std::pair<Type *, Value *>> varContextMap;
@@ -31,15 +38,27 @@ std::map<FunctionNode *, Function *> functionMap;
 
 int funcCounter = 1;
 
-void Assembler::printAssembled() {
+void Assembler::printAssembled(std::string filename) {
   if (!compiled) {
     std::cerr << "Trying to print before assembling";
     return;
   }
-  TheModule->print(llvm::outs(), nullptr);
+
+  if (filename.empty()) {
+    TheModule->print(llvm::outs(), nullptr);
+  } else {
+    std::error_code EC;
+    llvm::raw_fd_ostream OutputStream(filename, EC, llvm::sys::fs::OF_None);
+
+    if (EC) {
+      llvm::errs() << "Error opening file: " << EC.message() << "\n";
+      exit(1);
+    }
+    TheModule->print(OutputStream, nullptr);
+  }
 }
 
-void Assembler::optimize() {
+void Assembler::optimize(char optLevel) {
   if (!compiled) {
     std::cerr << "Trying to run optimizations before assembling";
     return;
@@ -49,10 +68,10 @@ void Assembler::optimize() {
   ModulePassManager modulePassManager;
 
   // Configurar a pipeline de otimização
-  llvm::FunctionAnalysisManager functionAnalysisManager;
-  llvm::LoopAnalysisManager loopAnalysisManager;
-  llvm::CGSCCAnalysisManager cgsccAnalysisManager;
-  llvm::ModuleAnalysisManager moduleAnalysisManager;
+  FunctionAnalysisManager functionAnalysisManager;
+  LoopAnalysisManager loopAnalysisManager;
+  CGSCCAnalysisManager cgsccAnalysisManager;
+  ModuleAnalysisManager moduleAnalysisManager;
 
   // Registrar os gerenciadores de análise
   passBuilder.registerModuleAnalyses(moduleAnalysisManager);
@@ -62,9 +81,26 @@ void Assembler::optimize() {
   passBuilder.crossRegisterProxies(loopAnalysisManager, functionAnalysisManager,
                                    cgsccAnalysisManager, moduleAnalysisManager);
 
-  // Criar a pipeline de otimização no nível 3
-  modulePassManager =
-      passBuilder.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3);
+  OptimizationLevel level;
+  switch (optLevel) {
+  case '0':
+    level = OptimizationLevel::O0;
+    break;
+  case '1':
+    level = OptimizationLevel::O1;
+    break;
+  case '2':
+    level = OptimizationLevel::O2;
+    break;
+  case '3':
+    level = llvm::OptimizationLevel::O3;
+    break;
+  default:
+    std::cerr << "Invalid optLevel used\n";
+    exit(1);
+  }
+
+  modulePassManager = passBuilder.buildPerModuleDefaultPipeline(level);
 
   // Rodar as otimizações no módulo
   modulePassManager.run(*TheModule, moduleAnalysisManager);
@@ -78,7 +114,7 @@ void Assembler::validateIR() {
   }
 }
 
-void Assembler::generateObject(std::string out) {
+void Assembler::generateObject(std::string out, bool useAsm) {
   llvm::InitializeAllTargetInfos();
   llvm::InitializeAllTargets();
   llvm::InitializeAllTargetMCs();
@@ -108,7 +144,8 @@ void Assembler::generateObject(std::string out) {
     exit(1);
   }
   legacy::PassManager pass;
-  auto FileType = CodeGenFileType::ObjectFile;
+  auto FileType =
+      useAsm ? CodeGenFileType::AssemblyFile : CodeGenFileType::ObjectFile;
 
   if (targetMachine->addPassesToEmitFile(pass, dest, nullptr, FileType)) {
     errs() << "TargetMachine can't emit a file of this type";
@@ -133,6 +170,8 @@ void Assembler::createExternReference(FunctionNode *node, std::string rawName) {
 
 Value *Assembler::loadValue(ExprNode *node) {
   node->visit(this);
+  if (node->type->raw == RawDataType::ARRAY)
+    return current;
 
   std::set<NodeType> memoryAccessTypes = {
       NodeType::VAR_REF, NodeType::INDEX_ACCESS, NodeType::MEMBER_ACCESS};
@@ -140,7 +179,7 @@ Value *Assembler::loadValue(ExprNode *node) {
   if (function && node->getNodeType() == NodeType::VAR_REF) {
     auto argDef = ((ExprVarRefNode *)node)->var;
     if (funcRegParams.find(argDef) != funcRegParams.end())
-      return current;
+      return current; // Parameters are saved in registers instead of memory
   }
 
   if (memoryAccessTypes.find(node->getNodeType()) != memoryAccessTypes.end())
@@ -237,6 +276,23 @@ Value *Assembler::getCondition(ExprNode *node, bool invert) {
 
 void Assembler::visitProgram(ProgramNode *node) {
   node->visitChildren(this);
+
+  if (withEntrypoint) {
+    if (!main) error("Non-existing main function");
+    auto exitFuncDef = node->funcs["sys_exit"];
+    if (!exitFuncDef) error("libCDefiner has not been runned");
+    auto exitFunc = functionMap[exitFuncDef];
+
+    auto startType = FunctionType::get(Type::getVoidTy(*TheContext), {}, false);
+    auto start = Function::Create(startType, Function::ExternalLinkage,
+                                  "_start", *TheModule);
+    auto startBlock = BasicBlock::Create(*TheContext, "startBlock", start);
+    Builder->SetInsertPoint(startBlock);
+    auto statusCode = Builder->CreateCall(main, {}, "code");
+    Builder->CreateCall(exitFunc, { statusCode }, "exit");
+    Builder->CreateRetVoid();
+  }
+
   compiled = true;
 }
 
@@ -255,13 +311,16 @@ void Assembler::visitFunction(FunctionNode *node) {
 
   auto funcName =
       node->_name == "main"
-          ? node->_name
+          ? "main"
           : "func" + std::to_string(funcCounter++) + "_" + node->_name;
   auto func = Function::Create(funcType, Function::ExternalLinkage, funcName,
                                *TheModule);
 
   functionMap[node] = func;
   function = func;
+
+  if (funcName == "main")
+    main = func;
 
   auto block = BasicBlock::Create(*TheContext, node->_name, func);
   Builder->SetInsertPoint(block);
@@ -329,7 +388,7 @@ void Assembler::visitIf(IfNode *node) {
   auto elseBlock = BasicBlock::Create(
       *TheContext, node->_elseBody ? "elseBlock" : "endBlock", function);
 
-  auto condition = getCondition(node->_expr, true);
+  auto condition = getCondition(node->_expr);
   Builder->CreateCondBr(condition, ifBlock, elseBlock);
 
   Builder->SetInsertPoint(ifBlock);
@@ -413,14 +472,14 @@ void Assembler::visitVarDef(VarDefNode *node) {
     if (!node->_defaultVal)
       return;
 
-    node->_defaultVal->visit(this);
-    auto defaultVal = current;
+    auto defaultVal = loadValue(node->_defaultVal);
+    auto castedVal = getCast(defaultVal, node->_defaultVal->type, node->type);
 
     auto varPtr = varContextMap[node].second;
     if (!varPtr)
       error("Invalid varDef");
 
-    Builder->CreateStore(defaultVal, varPtr);
+    Builder->CreateStore(castedVal, varPtr);
     return;
   }
 
@@ -464,8 +523,7 @@ void Assembler::visitMemberAccess(ExprMemberAccess *node) {
 }
 
 void Assembler::visitIndexAccess(ExprIndex *node) {
-  node->_inner->visit(this);
-  auto array = current;
+  auto array = loadValue(node->_inner);
   auto index = loadValue(node->_index);
 
   auto arrType = getType(node->_inner->type);
@@ -571,8 +629,10 @@ void Assembler::visitExprConstant(ExprConstantNode *node) {
   } else if (node->type->raw == RawDataType::ARRAY) {
     ulint i = 0;
     std::string str = "";
-    while (i < node->_rawValue.size() && i < node->type->size)
-      str += node->_rawValue[i++];
+    while (i < node->_rawValue.size() && i < node->type->size) {
+      char c = node->_rawValue[i++];
+      str += c < 0x7f ? c : 0x1a;
+    }
     current = ConstantDataArray::getString(*TheContext, str);
   }
 }

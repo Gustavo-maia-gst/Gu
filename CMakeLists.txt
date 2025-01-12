@@ -19,7 +19,8 @@ separate_arguments(LLVM_DEFINITIONS_LIST NATIVE_COMMAND ${LLVM_DEFINITIONS})
 add_definitions(${LLVM_DEFINITIONS_LIST})
 
 set(SOURCES
-    src/main.cpp
+    src/main/main.cpp
+    src/main/argHandler.cpp
     src/lexer/lexer.cpp
     src/ast/ast.cpp
     src/parser/parser.cpp

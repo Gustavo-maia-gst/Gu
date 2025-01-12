@@ -6,9 +6,10 @@ inline bool isValidConditionType(DataType *type) {
   return DataType::isNumeric(type->raw) || DataType::isAddress(type->raw);
 }
 
-SemanticValidator::SemanticValidator() {
+SemanticValidator::SemanticValidator(bool validateMain) {
   function = nullptr;
   program = nullptr;
+  this->validateMain = validateMain;
 }
 
 void SemanticValidator::visitProgram(ProgramNode *node) {
@@ -47,7 +48,7 @@ void SemanticValidator::visitProgram(ProgramNode *node) {
     }
   }
 
-  if (!node->funcs[MAIN_FUNC])
+  if (!node->funcs[MAIN_FUNC] && validateMain)
     compile_error("main function not defined ", node);
 
   node->visitChildren(this);
@@ -387,6 +388,16 @@ void SemanticValidator::visitExprBinaryOp(ExprBinaryNode *node) {
       node->type->raw != RawDataType::ERROR) {
     node->type = node->_right->type;
     node->_left->type = node->type;
+  }
+
+  if (node->_op == "=") {
+    if (!node->var) {
+      node->type = DataType::build(RawDataType::ERROR);
+      return;
+    }
+
+    if (node->var->_constant)
+      compile_error("Assignment to constant variable", node);
   }
 }
 

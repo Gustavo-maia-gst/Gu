@@ -1,7 +1,15 @@
 func main() -> int
 {
-    var c: *char = "Hello world";
-    c[4] = 'G';
-    sys_write(1, c, 12);
+    const buff: char[10];
+    sys_read(0, buff, 1);
+
+    if (buff[0] == 'S') {
+        buff = "Sim\n";
+    } else {
+        buff = "Nao\n";
+    }
+
+    sys_write(1, buff, 4);
+
     return 0;
 }

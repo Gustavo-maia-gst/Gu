@@ -9,7 +9,8 @@ LLVM_CXXFLAGS := $(shell llvm-config --cxxflags)
 LLVM_LDFLAGS  := $(shell llvm-config --ldflags)
 LLVM_LIBS     := $(shell llvm-config --libs --system-libs)
 
-FILES = src/main.cpp \
+FILES = src/main/main.cpp \
+		src/main/argHandler.cpp \
         src/lexer/lexer.cpp \
 		src/ast/ast.cpp \
         src/parser/parser.cpp \

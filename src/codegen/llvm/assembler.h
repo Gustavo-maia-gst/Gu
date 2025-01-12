@@ -54,10 +54,12 @@
 
 class Assembler : public BaseVisitor {
 public:
-  void optimize();
-  void printAssembled();
+  Assembler(bool withEntrypoint);
+
+  void optimize(char optLevel = '3');
+  void printAssembled(std::string filename = "");
   void validateIR();
-  void generateObject(std::string out);
+  void generateObject(std::string out, bool useAsm = false);
 
   void createExternReference(FunctionNode *node, std::string rawName);
 
@@ -84,9 +86,16 @@ public:
   void visitTypeDefNode(TypeDefNode *node) {}
 
 private:
+  llvm::LLVMContext *TheContext;
+  llvm::IRBuilder<> *Builder;
+  std::unique_ptr<llvm::Module> TheModule;
+  std::map<RawDataType, llvm::Type *> rawTypeMapper;
+
   bool compiled = false;
+  bool withEntrypoint;
   bool outWithReturn = false;
 
+  llvm::Function *main = nullptr;
   llvm::Function *function = nullptr;
   std::set<VarDefNode *> funcRegParams;
 
