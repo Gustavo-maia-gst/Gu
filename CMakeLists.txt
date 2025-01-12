@@ -21,11 +21,12 @@ add_definitions(${LLVM_DEFINITIONS_LIST})
 set(SOURCES
     src/main.cpp
     src/lexer/lexer.cpp
-    src/parser/ast/ast.cpp
+    src/ast/ast.cpp
     src/parser/parser.cpp
     src/semantic/validator.cpp
+    src/semantic/libcDefiner.cpp
     src/codegen/translators/gu2c.cpp
-    src/codegen/llvm/IRGenerator.cpp
+    src/codegen/llvm/assembler.cpp
 )
 
 #set(CMAKE_EXE_LINKER_FLAGS "-static")

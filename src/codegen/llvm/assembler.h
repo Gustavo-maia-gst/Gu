@@ -1,24 +1,65 @@
-#include "../../parser/ast/ast.h"
+#ifndef _assembler
+#define _assembler
+
+#include "../../ast/ast.h"
+#include <elf.h>
+#include <functional>
+#include <lld/Common/CommonLinkerContext.h>
+#include <lld/Common/Driver.h>
+#include <llvm/ADT/STLExtras.h>
+#include <llvm/ADT/SmallVector.h>
+#include <llvm/CodeGen/CommandFlags.h>
+#include <llvm/CodeGen/Passes.h>
+#include <llvm/ExecutionEngine/ExecutionEngine.h>
+#include <llvm/ExecutionEngine/GenericValue.h>
+#include <llvm/ExecutionEngine/Orc/ExecutionUtils.h>
+#include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constant.h>
+#include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/GlobalValue.h>
 #include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/InstrTypes.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
+#include <llvm/IR/PassManager.h>
 #include <llvm/IR/Type.h>
 #include <llvm/IR/Value.h>
+#include <llvm/IR/Verifier.h>
+#include <llvm/Linker/Linker.h>
+#include <llvm/MC/TargetRegistry.h>
+#include <llvm/Object/Binary.h>
+#include <llvm/Object/ObjectFile.h>
+#include <llvm/Passes/PassBuilder.h>
+#include <llvm/Support/CommandLine.h>
+#include <llvm/Support/Error.h>
+#include <llvm/Support/FileSystem.h>
+#include <llvm/Support/FormattedStream.h>
+#include <llvm/Support/InitLLVM.h>
+#include <llvm/Support/MemoryBuffer.h>
+#include <llvm/Support/TargetSelect.h>
+#include <llvm/Support/raw_ostream.h>
+#include <llvm/Target/TargetMachine.h>
+#include <llvm/Transforms/Scalar.h>
 #include <memory>
+#include <set>
 #include <stack>
 #include <string>
 #include <utility>
 
-class IRGenerator : public BaseVisitor {
+class Assembler : public BaseVisitor {
 public:
-  void print();
+  void optimize();
+  void printAssembled();
+  void validateIR();
+  void generateObject(std::string out);
+
+  void createExternReference(FunctionNode *node, std::string rawName);
 
   void visitProgram(ProgramNode *node);
   void visitFunction(FunctionNode *node);
@@ -39,11 +80,15 @@ public:
   void visitExprVarRef(ExprVarRefNode *node);
   void visitExprConstant(ExprConstantNode *node);
 
+  void visitBody(BodyNode *node);
   void visitTypeDefNode(TypeDefNode *node) {}
-  void visitBody(BlockNode *node) { node->visitChildren(this); }
 
 private:
+  bool compiled = false;
+  bool outWithReturn = false;
+
   llvm::Function *function = nullptr;
+  std::set<VarDefNode *> funcRegParams;
 
   llvm::Type *getType(DataType *type);
   llvm::Value *loadValue(ExprNode *node);
@@ -56,3 +101,4 @@ private:
 
   void error(std::string msg);
 };
+#endif

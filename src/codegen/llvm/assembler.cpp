@@ -1,23 +1,18 @@
-#include "IRGenerator.h"
-#include <functional>
-#include <llvm/IR/BasicBlock.h>
-#include <llvm/IR/Constants.h>
-#include <llvm/IR/GlobalValue.h>
-#include <llvm/IR/GlobalVariable.h>
-#include <llvm/IR/InstrTypes.h>
-#include <llvm/IR/Instructions.h>
-#include <llvm/IR/LLVMContext.h>
-#include <llvm/IR/Value.h>
-#include <llvm/Support/raw_ostream.h>
-#include <set>
-#include <string>
-#include <utility>
+#include "assembler.h"
+#include <lld/Common/Driver.h>
+#include <llvm/ADT/ArrayRef.h>
+#include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/Function.h>
+#include <llvm/IR/Type.h>
+#include <llvm/TargetParser/Triple.h>
+#include <vector>
 
 using namespace llvm;
 
 LLVMContext *TheContext = new LLVMContext();
 llvm::IRBuilder<> *Builder = new llvm::IRBuilder<>(*TheContext);
-llvm::Module *TheModule = new llvm::Module("Program", *TheContext);
+std::unique_ptr<llvm::Module> TheModule =
+    std::make_unique<Module>("Program", *TheContext);
 
 std::map<RawDataType, Type *> rawTypeMapper = {
     {RawDataType::CHAR, Type::getInt8Ty(*TheContext)},
@@ -36,13 +31,117 @@ std::map<FunctionNode *, Function *> functionMap;
 
 int funcCounter = 1;
 
-void IRGenerator::print() { TheModule->print(llvm::outs(), nullptr); }
+void Assembler::printAssembled() {
+  if (!compiled) {
+    std::cerr << "Trying to print before assembling";
+    return;
+  }
+  TheModule->print(llvm::outs(), nullptr);
+}
 
-Value *IRGenerator::loadValue(ExprNode *node) {
+void Assembler::optimize() {
+  if (!compiled) {
+    std::cerr << "Trying to run optimizations before assembling";
+    return;
+  }
+
+  PassBuilder passBuilder;
+  ModulePassManager modulePassManager;
+
+  // Configurar a pipeline de otimização
+  llvm::FunctionAnalysisManager functionAnalysisManager;
+  llvm::LoopAnalysisManager loopAnalysisManager;
+  llvm::CGSCCAnalysisManager cgsccAnalysisManager;
+  llvm::ModuleAnalysisManager moduleAnalysisManager;
+
+  // Registrar os gerenciadores de análise
+  passBuilder.registerModuleAnalyses(moduleAnalysisManager);
+  passBuilder.registerCGSCCAnalyses(cgsccAnalysisManager);
+  passBuilder.registerFunctionAnalyses(functionAnalysisManager);
+  passBuilder.registerLoopAnalyses(loopAnalysisManager);
+  passBuilder.crossRegisterProxies(loopAnalysisManager, functionAnalysisManager,
+                                   cgsccAnalysisManager, moduleAnalysisManager);
+
+  // Criar a pipeline de otimização no nível 3
+  modulePassManager =
+      passBuilder.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3);
+
+  // Rodar as otimizações no módulo
+  modulePassManager.run(*TheModule, moduleAnalysisManager);
+}
+
+void Assembler::validateIR() {
+  if (verifyModule(*TheModule, &errs())) {
+    errs() << "The code has been generated with errors, please report it at "
+              "github: https://github.com/Gustavo-maia-gs/gu\n";
+    exit(1);
+  }
+}
+
+void Assembler::generateObject(std::string out) {
+  llvm::InitializeAllTargetInfos();
+  llvm::InitializeAllTargets();
+  llvm::InitializeAllTargetMCs();
+  llvm::InitializeAllAsmParsers();
+  llvm::InitializeAllAsmPrinters();
+
+  std::string Error;
+  auto TargetTriple = LLVMGetDefaultTargetTriple();
+  auto Target = TargetRegistry::lookupTarget(TargetTriple, Error);
+
+  if (!Target) {
+    errs() << Error;
+    exit(1);
+  }
+
+  TargetOptions opt;
+  auto targetMachine = Target->createTargetMachine(TargetTriple, "generic", "",
+                                                   opt, Reloc::PIC_);
+  TheModule->setDataLayout(targetMachine->createDataLayout());
+  TheModule->setTargetTriple(TargetTriple);
+
+  std::error_code err;
+  raw_fd_ostream dest(out, err, sys::fs::OF_None);
+
+  if (err) {
+    errs() << "Could not open file: " << err.message();
+    exit(1);
+  }
+  legacy::PassManager pass;
+  auto FileType = CodeGenFileType::ObjectFile;
+
+  if (targetMachine->addPassesToEmitFile(pass, dest, nullptr, FileType)) {
+    errs() << "TargetMachine can't emit a file of this type";
+    exit(1);
+  }
+
+  pass.run(*TheModule);
+  dest.flush();
+}
+
+void Assembler::createExternReference(FunctionNode *node, std::string rawName) {
+  std::vector<Type *> paramTypes;
+  for (auto param : node->_params)
+    paramTypes.push_back(getType(param->type));
+
+  auto retType = getType(node->retType);
+  auto funcType = FunctionType::get(retType, paramTypes, false);
+  auto func = Function::Create(funcType, Function::ExternalLinkage, rawName,
+                               *TheModule);
+  functionMap[node] = func;
+}
+
+Value *Assembler::loadValue(ExprNode *node) {
   node->visit(this);
 
   std::set<NodeType> memoryAccessTypes = {
       NodeType::VAR_REF, NodeType::INDEX_ACCESS, NodeType::MEMBER_ACCESS};
+
+  if (function && node->getNodeType() == NodeType::VAR_REF) {
+    auto argDef = ((ExprVarRefNode *)node)->var;
+    if (funcRegParams.find(argDef) != funcRegParams.end())
+      return current;
+  }
 
   if (memoryAccessTypes.find(node->getNodeType()) != memoryAccessTypes.end())
     return Builder->CreateLoad(getType(node->type), current);
@@ -50,7 +149,7 @@ Value *IRGenerator::loadValue(ExprNode *node) {
     return current;
 }
 
-Type *IRGenerator::getType(DataType *type) {
+Type *Assembler::getType(DataType *type) {
   if (!type->inner && type->raw != RawDataType::STRUCT) {
     auto mapped = rawTypeMapper[type->raw];
     if (!mapped)
@@ -80,22 +179,21 @@ Type *IRGenerator::getType(DataType *type) {
   return nullptr;
 }
 
-Value *IRGenerator::getZero(DataType *type) {
+Value *Assembler::getZero(DataType *type) {
   if (DataType::isFloat(type->raw))
     return ConstantFP::get(getType(type), 0);
   else
     return ConstantInt::get(getType(type), 0);
 }
 
-Value *IRGenerator::getOne(DataType *type) {
+Value *Assembler::getOne(DataType *type) {
   if (DataType::isFloat(type->raw))
     return ConstantFP::get(getType(type), 1);
   else
     return ConstantInt::get(getType(type), 1);
 }
 
-Value *IRGenerator::getCast(Value *value, DataType *original,
-                            DataType *castTo) {
+Value *Assembler::getCast(Value *value, DataType *original, DataType *castTo) {
   if (original->equals(castTo))
     return value;
   if (DataType::isAddress(original->raw) && DataType::isAddress((castTo->raw)))
@@ -120,8 +218,8 @@ Value *IRGenerator::getCast(Value *value, DataType *original,
   return nullptr;
 }
 
-Value *IRGenerator::getCondition(ExprNode *node, bool invert) {
-  node->visit(this);
+Value *Assembler::getCondition(ExprNode *node, bool invert) {
+  current = loadValue(node);
   Value *condition;
 
   auto zero = getZero(node->type);
@@ -137,23 +235,30 @@ Value *IRGenerator::getCondition(ExprNode *node, bool invert) {
   return condition;
 }
 
-void IRGenerator::visitProgram(ProgramNode *node) { node->visitChildren(this); }
+void Assembler::visitProgram(ProgramNode *node) {
+  node->visitChildren(this);
+  compiled = true;
+}
 
-void IRGenerator::visitFunction(FunctionNode *node) {
-  std::set<std::string> paramNames;
+void Assembler::visitFunction(FunctionNode *node) {
+  funcRegParams.clear();
+
   std::vector<Type *> paramTypes;
   for (auto param : node->_params) {
     paramTypes.push_back(getType(param->type));
-    paramNames.insert(param->_name);
+    funcRegParams.insert(param);
   }
 
   auto retType = getType(node->retType);
 
   auto funcType = FunctionType::get(retType, paramTypes, false);
 
-  auto func = Function::Create(
-      funcType, Function::ExternalLinkage,
-      "func" + std::to_string(funcCounter++) + "_" + node->_name, *TheModule);
+  auto funcName =
+      node->_name == "main"
+          ? node->_name
+          : "func" + std::to_string(funcCounter++) + "_" + node->_name;
+  auto func = Function::Create(funcType, Function::ExternalLinkage, funcName,
+                               *TheModule);
 
   functionMap[node] = func;
   function = func;
@@ -171,7 +276,7 @@ void IRGenerator::visitFunction(FunctionNode *node) {
   }
 
   for (auto &[varName, varDef] : node->localVars) {
-    if (paramNames.find(varName) != paramNames.end())
+    if (funcRegParams.find(varDef) != funcRegParams.end())
       continue;
 
     auto varType = getType(varDef->type);
@@ -180,16 +285,19 @@ void IRGenerator::visitFunction(FunctionNode *node) {
   }
 
   node->_body->visit(this);
-  if (node->retType->raw == RawDataType::VOID)
-    Builder->CreateRetVoid();
+  if (node->retType->raw == RawDataType::VOID) {
+    if (!block->getTerminator())
+      Builder->CreateRetVoid();
+  }
 
   for (auto &[_, varDef] : node->localVars)
     varContextMap.erase(varDef);
 
   function = nullptr;
+  funcRegParams.clear();
 }
 
-void IRGenerator::visitStructDef(StructDefNode *node) {
+void Assembler::visitStructDef(StructDefNode *node) {
   auto structType = StructType::create(*TheContext, node->_name);
   structTypeMap[node->_name] = structType;
 
@@ -203,38 +311,61 @@ void IRGenerator::visitStructDef(StructDefNode *node) {
   }
 }
 
-void IRGenerator::visitIf(IfNode *node) {
-  auto ifBlock = BasicBlock::Create(*TheContext, "ifBlock", function);
-  auto endBlock = BasicBlock::Create(*TheContext, "endBlock", function);
-  auto elseBlock = node->_elseBody
-                       ? BasicBlock::Create(*TheContext, "elseBlock", function)
-                       : endBlock;
+void Assembler::visitBody(BodyNode *node) {
+  outWithReturn = false;
 
-  auto condition = getCondition(node->_expr);
+  for (auto &statement : node->_statements) {
+    statement->visit(this);
+    if (statement->getNodeType() == NodeType::RETURN) {
+      outWithReturn = true;
+      break;
+    };
+  }
+}
+
+void Assembler::visitIf(IfNode *node) {
+  auto ifBlock = BasicBlock::Create(*TheContext, "ifBlock", function);
+  BasicBlock *endBlock = nullptr;
+  auto elseBlock = BasicBlock::Create(
+      *TheContext, node->_elseBody ? "elseBlock" : "endBlock", function);
+
+  auto condition = getCondition(node->_expr, true);
   Builder->CreateCondBr(condition, ifBlock, elseBlock);
+
   Builder->SetInsertPoint(ifBlock);
   node->_ifBody->visit(this);
-  Builder->CreateBr(endBlock);
+  if (!outWithReturn) {
+    endBlock = BasicBlock::Create(*TheContext, "endBlock", function);
+    Builder->CreateBr(endBlock);
+  }
 
   if (node->_elseBody) {
     Builder->SetInsertPoint(elseBlock);
     node->_elseBody->visit(this);
-    Builder->CreateBr(endBlock);
+    if (!outWithReturn) {
+      if (!endBlock)
+        endBlock = BasicBlock::Create(*TheContext, "endBlock", function);
+
+      Builder->CreateBr(endBlock);
+    }
   }
 
-  Builder->SetInsertPoint(endBlock);
+  if (endBlock)
+    Builder->SetInsertPoint(endBlock);
 }
 
-void IRGenerator::visitWhile(WhileNode *node) {
+void Assembler::visitWhile(WhileNode *node) {
   auto testBlock = BasicBlock::Create(*TheContext, "testBlock", function);
   auto loopBlock = BasicBlock::Create(*TheContext, "loopBlock", function);
   auto endBlock = BasicBlock::Create(*TheContext, "endBlock", function);
 
   breakTo.push(endBlock);
 
+  Builder->CreateBr(testBlock);
+
   Builder->SetInsertPoint(testBlock);
 
-  auto condition = getCondition(node->_expr, true);
+  auto condition = getCondition(node->_expr);
   Builder->CreateCondBr(condition, loopBlock, endBlock);
 
   Builder->SetInsertPoint(loopBlock);
@@ -246,7 +377,7 @@ void IRGenerator::visitWhile(WhileNode *node) {
   breakTo.pop();
 }
 
-void IRGenerator::visitFor(ForNode *node) {
+void Assembler::visitFor(ForNode *node) {
   auto testBlock = BasicBlock::Create(*TheContext, "testBlock", function);
   auto loopBlock = BasicBlock::Create(*TheContext, "loopBlock", function);
   auto endBlock = BasicBlock::Create(*TheContext, "endBlock", function);
@@ -256,10 +387,12 @@ void IRGenerator::visitFor(ForNode *node) {
   if (node->_start)
     node->_start->visit(this);
 
+  Builder->CreateBr(testBlock);
+
   Builder->SetInsertPoint(testBlock);
 
   if (node->_cond) {
-    auto condition = getCondition(node->_cond, true);
+    auto condition = getCondition(node->_cond);
     Builder->CreateCondBr(condition, loopBlock, endBlock);
   } else
     Builder->CreateBr(loopBlock);
@@ -275,7 +408,7 @@ void IRGenerator::visitFor(ForNode *node) {
   breakTo.pop();
 }
 
-void IRGenerator::visitVarDef(VarDefNode *node) {
+void Assembler::visitVarDef(VarDefNode *node) {
   if (function) {
     if (!node->_defaultVal)
       return;
@@ -298,19 +431,19 @@ void IRGenerator::visitVarDef(VarDefNode *node) {
   }
 
   auto varType = getType((node->type));
-  auto globalVar =
-      new GlobalVariable(varType, node->_constant, GlobalValue::ExternalLinkage,
-                         (Constant *)constant, node->_name);
+  auto globalVar = new GlobalVariable(*TheModule, varType, node->_constant,
+                                      GlobalValue::ExternalLinkage,
+                                      (Constant *)constant, node->_name);
 
   varContextMap[node] = std::make_pair(varType, globalVar);
 }
 
-void IRGenerator::visitBreakNode(BreakNode *node) {
+void Assembler::visitBreakNode(BreakNode *node) {
   auto endBlock = breakTo.top();
   Builder->CreateBr(endBlock);
 }
 
-void IRGenerator::visitReturnNode(ReturnNode *node) {
+void Assembler::visitReturnNode(ReturnNode *node) {
   if (node->_expr) {
     auto retVal = loadValue(node->_expr);
     current = getCast(retVal, node->_expr->type, node->retType);
@@ -321,7 +454,7 @@ void IRGenerator::visitReturnNode(ReturnNode *node) {
   Builder->CreateRetVoid();
 }
 
-void IRGenerator::visitMemberAccess(ExprMemberAccess *node) {
+void Assembler::visitMemberAccess(ExprMemberAccess *node) {
   node->_struct->visit(this);
   auto structType = structTypeMap[node->structDef->_name];
   auto offset = node->structDef->membersOffset[node->_memberName];
@@ -330,23 +463,25 @@ void IRGenerator::visitMemberAccess(ExprMemberAccess *node) {
       Builder->CreateStructGEP(structType, current, offset, node->_memberName);
 }
 
-void IRGenerator::visitIndexAccess(ExprIndex *node) {
+void Assembler::visitIndexAccess(ExprIndex *node) {
   node->_inner->visit(this);
   auto array = current;
-  node->_index->visit(this);
-  auto index = current;
+  auto index = loadValue(node->_index);
 
   auto arrType = getType(node->_inner->type);
 
-  current = Builder->CreateGEP(arrType, array, {Builder->getInt32(0), index},
-                               "index");
+  // current = Builder->CreateGEP(arrType, array, {Builder->getInt32(0), index},
+  //                              "index");
+  current = Builder->CreateGEP(arrType, array, index, "index");
 }
 
-void IRGenerator::visitExprCall(ExprCallNode *node) {
+void Assembler::visitExprCall(ExprCallNode *node) {
   std::vector<Value *> args;
-  for (auto arg : node->_args) {
-    arg->visit(this);
-    args.push_back(current);
+  for (ulint i = 0; i < node->_args.size(); i++) {
+    auto loadedValue = loadValue(node->_args[i]);
+    auto casted = getCast(loadedValue, node->_args[i]->type,
+                          node->func->_params[i]->type);
+    args.push_back(casted);
   }
 
   auto func = functionMap[node->func];
@@ -354,7 +489,7 @@ void IRGenerator::visitExprCall(ExprCallNode *node) {
   current = Builder->CreateCall(func, args, "call");
 }
 
-void IRGenerator::visitExprUnaryOp(ExprUnaryNode *node) {
+void Assembler::visitExprUnaryOp(ExprUnaryNode *node) {
   auto exprType = getType(node->_expr->type);
   auto exprValue = loadValue(node->_expr);
 
@@ -399,7 +534,7 @@ void IRGenerator::visitExprUnaryOp(ExprUnaryNode *node) {
   }
 }
 
-void IRGenerator::visitExprVarRef(ExprVarRefNode *node) {
+void Assembler::visitExprVarRef(ExprVarRefNode *node) {
   auto varDef = node->var;
   auto var = varContextMap[varDef];
   if (!var.first || !var.second)
@@ -408,7 +543,7 @@ void IRGenerator::visitExprVarRef(ExprVarRefNode *node) {
   current = var.second;
 }
 
-void IRGenerator::visitExprConstant(ExprConstantNode *node) {
+void Assembler::visitExprConstant(ExprConstantNode *node) {
   if (rawTypeMapper.find(node->type->raw) != rawTypeMapper.end()) {
     auto type = rawTypeMapper[node->type->raw];
     if (type->isFloatingPointTy()) {
@@ -431,7 +566,7 @@ void IRGenerator::visitExprConstant(ExprConstantNode *node) {
   if (node->type->raw == RawDataType::POINTER) {
     auto stringPtr = ConstantDataArray::getString(*TheContext, node->_rawValue);
     current =
-        new GlobalVariable(stringPtr->getType(), true,
+        new GlobalVariable(*TheModule, stringPtr->getType(), true,
                            GlobalValue::ExternalLinkage, stringPtr, "string");
   } else if (node->type->raw == RawDataType::ARRAY) {
     ulint i = 0;
@@ -442,7 +577,7 @@ void IRGenerator::visitExprConstant(ExprConstantNode *node) {
   }
 }
 
-void IRGenerator::visitExprBinaryOp(ExprBinaryNode *node) {
+void Assembler::visitExprBinaryOp(ExprBinaryNode *node) {
   static std::map<std::string, std::function<void(Value *, Value *)>>
       binaryOpHandlers = {
           {"+",
@@ -599,7 +734,7 @@ void IRGenerator::visitExprBinaryOp(ExprBinaryNode *node) {
   handler(leftCasted, rightCasted);
 }
 
-void IRGenerator::error(std::string err) {
+void Assembler::error(std::string err) {
   std::cerr << err << std::endl;
   exit(1);
 }

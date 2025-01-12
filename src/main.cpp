@@ -1,6 +1,7 @@
-#include "codegen/llvm/IRGenerator.h"
+#include "codegen/llvm/assembler.h"
 #include "lexer/lexer.h"
 #include "parser/parser.h"
+#include "semantic/libcDefiner.h"
 #include "semantic/validator.h"
 
 int main() {
@@ -9,22 +10,37 @@ int main() {
   auto parser = new AstParser(sc);
   auto program = parser->parseProgram();
 
+  auto libCDefiner = new LibCDefiner();
+
+  libCDefiner->addPosixSyscallsDefs(program);
+
   auto validator = new SemanticValidator;
   program->visit(validator);
-  auto errors = validator->getErrors();
-  if (!errors.empty()) {
+
+  auto semanticErros = validator->getErrors();
+  if (!semanticErros.empty()) {
     std::cerr << "There are errors in the source code" << std::endl;
 
-    for (auto err : errors)
+    for (auto err : semanticErros)
       std::cerr << err << std::endl;
 
     exit(1);
   }
 
-  auto codegen = new IRGenerator();
-  program->visit(codegen);
+  auto assembler = new Assembler();
 
-  codegen->print();
+  libCDefiner->addPosixSyscallsIRReferences(program, assembler);
+
+  program->visit(assembler);
+  delete program;
+
+  assembler->printAssembled();
+
+  assembler->validateIR();
+
+  assembler->optimize();
+
+  assembler->generateObject("teste.o");
 
   return 0;
 }

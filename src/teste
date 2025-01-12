@@ -1,11 +1,7 @@
-func main() -> void
+func main() -> int
 {
-    var arr: int[32], i: int;
-
-    var soma: int = 0;
-    for (i = 0; i < 32; i = i + 1) {
-        soma = soma + arr[i];
-    }
-
-    return;
+    var c: *char = "Hello world";
+    c[4] = 'G';
+    sys_write(1, c, 12);
+    return 0;
 }

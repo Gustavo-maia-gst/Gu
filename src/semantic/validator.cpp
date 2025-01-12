@@ -69,14 +69,13 @@ void SemanticValidator::visitFunction(FunctionNode *node) {
     node->localVars[localVar->_name] = localVar;
   }
 
-  hasReturn = false;
   function = node;
 
   node->visitChildren(this);
-
   node->retType = node->_retTypeDef->dataType;
-  if (!hasReturn && node->retType->raw != RawDataType::VOID)
-    compile_error("non-void function must have a return", node);
+
+  if (!outWithReturn && node->retType->raw != RawDataType::VOID)
+    compile_error("Control reaches end of non-void function", node);
 }
 
 void SemanticValidator::visitStructDef(StructDefNode *node) {
@@ -154,6 +153,21 @@ void SemanticValidator::visitStructDef(StructDefNode *node) {
   }
 }
 
+void SemanticValidator::visitBody(BodyNode *node) {
+  outWithReturn = false;
+  for (ulint i = 0; i < node->_statements.size(); i++) {
+    auto statement = node->_statements[i];
+    statement->visit(this);
+
+    if (!outWithReturn)
+      continue;
+
+    if (i < node->_statements.size() - 1)
+      compile_error("Unreachable code after return statement", node);
+    break;
+  }
+}
+
 void SemanticValidator::visitVarDef(VarDefNode *node) {
   node->visitChildren(this);
 
@@ -178,9 +192,21 @@ void SemanticValidator::visitVarDef(VarDefNode *node) {
 }
 
 void SemanticValidator::visitIf(IfNode *node) {
-  node->visitChildren(this);
+  node->_expr->visit(this);
 
   auto exprType = node->_expr->type->raw;
+
+  node->_ifBody->visit(this);
+  bool ifWithReturn = outWithReturn;
+  bool elseWithReturn = false;
+
+  if (node->_elseBody) {
+    node->_elseBody->visit(this);
+    elseWithReturn = outWithReturn;
+  }
+
+  if (ifWithReturn && elseWithReturn)
+    outWithReturn = true;
 
   if (DataType::isNumeric(exprType))
     return;
@@ -194,6 +220,7 @@ void SemanticValidator::visitIf(IfNode *node) {
 
 void SemanticValidator::visitFor(ForNode *node) {
   node->visitChildren(this);
+  outWithReturn = false;
   if (!isValidConditionType(node->_cond->type) &&
       node->_cond->type->raw != RawDataType::VOID)
     compile_error("Invalid condition in for", node);
@@ -201,6 +228,7 @@ void SemanticValidator::visitFor(ForNode *node) {
 
 void SemanticValidator::visitWhile(WhileNode *node) {
   node->visitChildren(this);
+  outWithReturn = false;
   if (!isValidConditionType(node->_expr->type) &&
       node->_expr->type->raw != RawDataType::VOID)
     compile_error("Invalid condition in while", node);
@@ -236,7 +264,7 @@ void SemanticValidator::visitBreakNode(BreakNode *node) {
 }
 
 void SemanticValidator::visitReturnNode(ReturnNode *node) {
-  hasReturn = true;
+  outWithReturn = true;
 
   node->visitChildren(this);
 
@@ -465,8 +493,10 @@ void SemanticValidator::visitExprCall(ExprCallNode *node) {
 
   for (ulint i = 0; i < node->_args.size(); i++) {
     node->_args[i]->visit(this);
-
-    if (!node->_args[i]->type->equals(node->func->_params[i]->type)) {
+    auto castedType = DataType::getResultType(node->func->_params[i]->type, "=",
+                                              node->_args[i]->type);
+    bool validType = castedType->equals(node->func->_params[i]->type);
+    if (!validType) {
       type_error("Invalid type for argument " + std::to_string(i) +
                      " in function call",
                  node);

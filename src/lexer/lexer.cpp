@@ -126,17 +126,31 @@ void Lexer::nextToken_String() {
 void Lexer::nextToken_Char() {
   getChar();
 
-  std::string s = "";
+  int c = lookChar();
+  if (c == '\'') {
+    error("Empty char");
+  }
 
-  char c = lookChar();
-  if (c && c != '\'') {
-    s += getChar();
+  c = getChar();
+  if (c == '\\') {
+    c = getChar();
+    switch (c) {
+    case 'n':
+      c = '\n';
+    case 'b':
+      c = '\b';
+    case 't':
+      c = '\t';
+    case '0':
+      c = '\0';
+    default:;
+    }
   }
 
   if (getChar() != '\'')
-    error("Unexpected value reading char");
+    error("Expecting ' got " + std::to_string(lookChar()) + " reading char");
 
-  current.raw = s;
+  current.raw = std::to_string(c);
   current.rawType = TokenType::CHAR;
   current.mappedType = tokenMapper ? (*tokenMapper)["_LEXER__CHAR__"] : 0;
 }

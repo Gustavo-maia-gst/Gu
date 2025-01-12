@@ -54,7 +54,7 @@ class AstNode;
 
 class ProgramNode;
 class FunctionNode;
-class BlockNode;
+class BodyNode;
 class IfNode;
 class WhileNode;
 class ForNode;
@@ -80,7 +80,7 @@ class BaseVisitor {
 public:
   virtual void visitProgram(ProgramNode *node) {};
   virtual void visitFunction(FunctionNode *node) {};
-  virtual void visitBody(BlockNode *node) {};
+  virtual void visitBody(BodyNode *node) {};
   virtual void visitIf(IfNode *node) {};
   virtual void visitWhile(WhileNode *node) {};
   virtual void visitFor(ForNode *node) {};
@@ -182,11 +182,12 @@ public:
   std::string _name;
   std::vector<VarDefNode *> _params;
   std::vector<VarDefNode *> _innerVars;
-  BlockNode *_body;
+  BodyNode *_body;
   TypeDefNode *_retTypeDef;
 
   std::map<std::string, VarDefNode *> localVars;
   DataType *retType = nullptr;
+  bool external = false;
 
   FunctionNode(int line, int startCol, AstNode *parent, std::string ident)
       : AstNode(NodeType::FUNCTION, line, startCol, parent) {
@@ -212,18 +213,18 @@ public:
   }
 };
 
-class BlockNode : public AstNode {
+class BodyNode : public AstNode {
 public:
   std::vector<AstNode *> _statements;
-  BlockNode(int line, int startCol, AstNode *parent)
+  BodyNode(int line, int startCol, AstNode *parent)
       : AstNode(NodeType::BODY, line, startCol, parent) {}
 };
 
 class IfNode : public AstNode {
 public:
   ExprNode *_expr;
-  BlockNode *_ifBody;
-  BlockNode *_elseBody;
+  BodyNode *_ifBody;
+  BodyNode *_elseBody;
 
   IfNode(int line, int startCol, AstNode *parent)
       : AstNode(NodeType::IF, line, startCol, parent) {
@@ -236,7 +237,7 @@ public:
 class WhileNode : public AstNode {
 public:
   ExprNode *_expr;
-  BlockNode *_body;
+  BodyNode *_body;
 
   WhileNode(int line, int startCol, AstNode *parent)
       : AstNode(NodeType::WHILE, line, startCol, parent) {
@@ -250,7 +251,7 @@ public:
   ExprNode *_start;
   ExprNode *_cond;
   ExprNode *_inc;
-  BlockNode *_body;
+  BodyNode *_body;
 
   ForNode(int line, int startCol, AstNode *parent)
       : AstNode(NodeType::FOR, line, startCol, parent) {

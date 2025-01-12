@@ -1,6 +1,7 @@
 #ifndef _validator
 #define _validator
-#include "../parser/ast/ast.h"
+
+#include "../ast/ast.h"
 #include "../parser/parser.h"
 #include <iostream>
 #include <map>
@@ -16,6 +17,7 @@ public:
   void visitProgram(ProgramNode *node) override;
   void visitFunction(FunctionNode *node) override;
   void visitStructDef(StructDefNode *node) override;
+  void visitBody(BodyNode *node) override;
   void visitVarDef(VarDefNode *node) override;
   void visitTypeDefNode(TypeDefNode *node) override;
 
@@ -33,8 +35,6 @@ public:
   void visitIndexAccess(ExprIndex *node) override;
   void visitExprCall(ExprCallNode *node) override;
 
-  void visitBody(BlockNode *node) override { node->visitChildren(this); };
-
   const std::vector<std::string> getErrors() { return errors; };
 
 private:
@@ -51,7 +51,7 @@ private:
 
   ProgramNode *program;
   FunctionNode *function;
-  bool hasReturn;
+  bool outWithReturn;
 };
 
 #endif

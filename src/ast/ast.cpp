@@ -36,7 +36,7 @@ void AstNode::visit(BaseVisitor *visitor) {
     visitor->visitStructDef((StructDefNode *)this);
     break;
   case NodeType::BODY:
-    visitor->visitBody((BlockNode *)this);
+    visitor->visitBody((BodyNode *)this);
     break;
   case NodeType::IF:
     visitor->visitIf((IfNode *)this);
@@ -129,7 +129,7 @@ DataType *DataType::build(RawDataType raw) {
   auto datatype = new DataType();
   datatype->raw = raw;
   datatype->inner = nullptr;
-  datatype->arrLength = -1;
+  datatype->arrLength = 0;
   datatype->size = sizesMap[raw];
   typesRefs.push_back(datatype);
   return datatype;
@@ -224,9 +224,8 @@ DataType *DataType::fromString(std::string &str) {
 }
 
 DataType *DataType::fromChar(std::string &ch) {
-  int c = ch[0];
   auto dataType = build(RawDataType::CHAR);
-  dataType->ident = std::to_string(c);
+  dataType->ident = ch;
   return dataType;
 }
 

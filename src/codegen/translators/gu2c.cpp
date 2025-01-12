@@ -43,7 +43,7 @@ void Gu2CVisitor::visitStructDef(StructDefNode *node) {
         func->visit(this);
 };
 
-void Gu2CVisitor::visitBody(BlockNode *node) {
+void Gu2CVisitor::visitBody(BodyNode *node) {
   int l = identLevel;
   std::string s0 = "";
   while (l--)

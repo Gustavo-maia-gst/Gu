@@ -1,5 +1,5 @@
 #include "parser.h"
-#include "ast/ast.h"
+#include "../ast/ast.h"
 
 std::map<std::string, int> baseTypeMapper = {
     {"func", ProgramTokenType::FUNC},
@@ -103,8 +103,10 @@ ProgramNode *AstParser::parseProgram() {
 
     if (current.mappedType == FUNC)
       parseFunction(node);
-    else if (current.mappedType == VAR || current.mappedType == CONST)
+    else if (current.mappedType == VAR || current.mappedType == CONST) {
       parseVarDef(node, current.mappedType == CONST);
+      nextExpected(SEMICOLON, "Expecting semicolon");
+    }
     else if (current.mappedType == STRUCT)
       parseStruct(node);
     else
@@ -172,10 +174,10 @@ StructDefNode *AstParser::parseStruct(AstNode *parent) {
 /*
   BODY: OPEN_BRACES STATEMENT*  CLOSE_BRACES
 */
-BlockNode *AstParser::parseBlock(AstNode *parent) {
+BodyNode *AstParser::parseBlock(AstNode *parent) {
   nextExpected(OPEN_BRACES, "Expecting {");
 
-  auto node = new BlockNode(currLine(), currCol(), parent);
+  auto node = new BodyNode(currLine(), currCol(), parent);
 
   while (lexer->get().mappedType != CLOSE_BRACES) {
     if (lexer->look().rawType == TokenType::END_OF_INPUT)
@@ -206,7 +208,7 @@ AstNode *AstParser::parseStatement(AstNode *parent) {
     return parseWhile(parent);
   case CONST:
   case VAR: {
-    auto block = (BlockNode *)parent;
+    auto block = (BodyNode *)parent;
 
     bool constant = token.mappedType == CONST;
     auto node = parseVarDef(parent, constant);

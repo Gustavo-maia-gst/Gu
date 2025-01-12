@@ -1,7 +1,7 @@
 #ifndef _parser
 #define _parser
 #include "../lexer/lexer.h"
-#include "ast/ast.h"
+#include "../ast/ast.h"
 #include <cstdlib>
 #include <stack>
 #include <unordered_set>
@@ -85,7 +85,7 @@ private:
 
   FunctionNode *parseFunction(AstNode *parent);
   StructDefNode *parseStruct(AstNode *parent);
-  BlockNode *parseBlock(AstNode *parent);
+  BodyNode *parseBlock(AstNode *parent);
   AstNode *parseStatement(AstNode *parent);
   IfNode *parseIf(AstNode *parent);
   WhileNode *parseWhile(AstNode *parent);
