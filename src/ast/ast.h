@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <string>
 #include <sys/types.h>
+#include <utility>
 #include <vector>
 
 typedef long unsigned int ulint;
@@ -137,11 +138,12 @@ private:
 /* Attributes starting with _ are filled in parsing time */
 class AstNode {
 public:
-  AstNode(NodeType nodeType, int line, int startCol,
+  AstNode(NodeType nodeType, std::string &filename, int line, int startCol,
           AstNode *parent = nullptr) {
     this->nodeType = nodeType;
     this->_line = line;
     this->_startCol = startCol;
+    this->_filename = filename;
 
     this->_parent = parent;
     if (parent)
@@ -160,6 +162,7 @@ public:
 
   int _line;
   int _startCol;
+  std::string _filename;
 
 private:
   NodeType nodeType;
@@ -170,10 +173,22 @@ public:
   std::map<std::string, FunctionNode *> funcs;
   std::map<std::string, VarDefNode *> globalVars;
   std::map<std::string, StructDefNode *> structDefs;
+  std::vector<std::pair<std::string, bool>> imports;
 
-  ProgramNode(int line, int startCol)
-      : AstNode(NodeType::PROGRAM, line, startCol, nullptr) {
+  ProgramNode(std::string &filename, int line, int startCol)
+      : AstNode(NodeType::PROGRAM, filename, line, startCol, nullptr) {
     this->_children = _children;
+  }
+
+  // Destructive operation deletes the other node and some attributes may be
+  // loosen
+  void merge(ProgramNode *other) {
+    for (auto child : other->_children) {
+      child->_parent = this;
+      this->_children.push_back(child);
+    }
+
+    delete other;
   }
 };
 
@@ -184,13 +199,15 @@ public:
   std::vector<VarDefNode *> _innerVars;
   BodyNode *_body;
   TypeDefNode *_retTypeDef;
+  bool _export = false;
+  bool _external = false;
 
   std::map<std::string, VarDefNode *> localVars;
   DataType *retType = nullptr;
-  bool external = false;
 
-  FunctionNode(int line, int startCol, AstNode *parent, std::string ident)
-      : AstNode(NodeType::FUNCTION, line, startCol, parent) {
+  FunctionNode(std::string &filename, int line, int startCol, AstNode *parent,
+               std::string ident)
+      : AstNode(NodeType::FUNCTION, filename, line, startCol, parent) {
     _name = ident;
     _body = nullptr;
     _retTypeDef = nullptr;
@@ -201,14 +218,17 @@ class StructDefNode : public AstNode {
 public:
   std::vector<AstNode *> _members;
   std::string _name;
+  bool _export;
+  bool _external;
 
   std::map<std::string, VarDefNode *> membersDef;
   std::map<std::string, FunctionNode *> funcMembers;
   std::map<std::string, int> membersOffset;
   int size;
 
-  StructDefNode(int line, int startCol, AstNode *parent, std::string name)
-      : AstNode(NodeType::STRUCT_DEF, line, startCol, parent) {
+  StructDefNode(std::string &filename, int line, int startCol, AstNode *parent,
+                std::string name)
+      : AstNode(NodeType::STRUCT_DEF, filename, line, startCol, parent) {
     this->_name = name;
   }
 };
@@ -216,8 +236,8 @@ public:
 class BodyNode : public AstNode {
 public:
   std::vector<AstNode *> _statements;
-  BodyNode(int line, int startCol, AstNode *parent)
-      : AstNode(NodeType::BODY, line, startCol, parent) {}
+  BodyNode(std::string &filename, int line, int startCol, AstNode *parent)
+      : AstNode(NodeType::BODY, filename, line, startCol, parent) {}
 };
 
 class IfNode : public AstNode {
@@ -226,8 +246,8 @@ public:
   BodyNode *_ifBody;
   BodyNode *_elseBody;
 
-  IfNode(int line, int startCol, AstNode *parent)
-      : AstNode(NodeType::IF, line, startCol, parent) {
+  IfNode(std::string &filename, int line, int startCol, AstNode *parent)
+      : AstNode(NodeType::IF, filename, line, startCol, parent) {
     _expr = nullptr;
     _ifBody = nullptr;
     _elseBody = nullptr;
@@ -239,8 +259,8 @@ public:
   ExprNode *_expr;
   BodyNode *_body;
 
-  WhileNode(int line, int startCol, AstNode *parent)
-      : AstNode(NodeType::WHILE, line, startCol, parent) {
+  WhileNode(std::string &filename, int line, int startCol, AstNode *parent)
+      : AstNode(NodeType::WHILE, filename, line, startCol, parent) {
     _expr = nullptr;
     _body = nullptr;
   }
@@ -253,8 +273,8 @@ public:
   ExprNode *_inc;
   BodyNode *_body;
 
-  ForNode(int line, int startCol, AstNode *parent)
-      : AstNode(NodeType::FOR, line, startCol, parent) {
+  ForNode(std::string &filename, int line, int startCol, AstNode *parent)
+      : AstNode(NodeType::FOR, filename, line, startCol, parent) {
     _start = nullptr;
     _cond = nullptr;
     _body = nullptr;
@@ -268,12 +288,14 @@ public:
   TypeDefNode *_typeDef;
   ExprNode *_defaultVal;
   bool _constant;
+  bool _export;
+  bool _external;
 
   DataType *type = nullptr;
 
-  VarDefNode(int line, int startCol, AstNode *parent, std::string name,
-             bool constant = false)
-      : AstNode(NodeType::VAR_DEF, line, startCol, parent) {
+  VarDefNode(std::string &filename, int line, int startCol, AstNode *parent,
+             std::string name, bool constant = false)
+      : AstNode(NodeType::VAR_DEF, filename, line, startCol, parent) {
     this->_name = name;
     _constant = constant;
     _typeDef = nullptr;
@@ -285,8 +307,8 @@ class BreakNode : public AstNode {
 public:
   AstNode *target;
 
-  BreakNode(int line, int startCol, AstNode *parent)
-      : AstNode(NodeType::BREAK, line, startCol, parent) {
+  BreakNode(std::string &filename, int line, int startCol, AstNode *parent)
+      : AstNode(NodeType::BREAK, filename, line, startCol, parent) {
     target = nullptr;
   }
 };
@@ -296,8 +318,8 @@ public:
   ExprNode *_expr;
   DataType *retType;
 
-  ReturnNode(int line, int startCol, AstNode *parent)
-      : AstNode(NodeType::RETURN, line, startCol, parent) {
+  ReturnNode(std::string &filename, int line, int startCol, AstNode *parent)
+      : AstNode(NodeType::RETURN, filename, line, startCol, parent) {
     _expr = nullptr;
   }
 };
@@ -310,22 +332,24 @@ public:
   std::string _rawIdent;
   DataType *dataType;
 
-  static TypeDefNode *build(std::string type, int line, int startCol) {
-    auto typeDef = new TypeDefNode(line, startCol);
+  static TypeDefNode *build(std::string type, std::string &filename, int line,
+                            int startCol) {
+    auto typeDef = new TypeDefNode(filename, line, startCol);
     typeDef->_rawIdent = type;
     return typeDef;
   }
-  static TypeDefNode *buildPointer(TypeDefNode *innerType, int line,
+  static TypeDefNode *buildPointer(TypeDefNode *innerType,
+                                   std::string &filename, int line,
                                    int startCol) {
-    auto typeDef = new TypeDefNode(line, startCol);
+    auto typeDef = new TypeDefNode(filename, line, startCol);
     typeDef->_pointsTo = innerType;
     innerType->_parent = typeDef;
     typeDef->_children.push_back(innerType);
     return typeDef;
   }
-  static TypeDefNode *buildArray(TypeDefNode *innerType, int size, int line,
-                                 int startCol) {
-    auto typeDef = new TypeDefNode(line, startCol);
+  static TypeDefNode *buildArray(TypeDefNode *innerType, std::string &filename,
+                                 int size, int line, int startCol) {
+    auto typeDef = new TypeDefNode(filename, line, startCol);
     typeDef->_arrayOf = innerType;
     typeDef->_arrSize = size;
     innerType->_parent = typeDef;
@@ -334,8 +358,8 @@ public:
   }
 
 private:
-  TypeDefNode(int line, int startCol)
-      : AstNode(NodeType::TYPE_DEF, line, startCol, nullptr) {
+  TypeDefNode(std::string &filename, int line, int startCol)
+      : AstNode(NodeType::TYPE_DEF, filename, line, startCol, nullptr) {
     _pointsTo = nullptr;
     _arrayOf = nullptr;
     dataType = nullptr;
@@ -349,8 +373,9 @@ public:
   VarDefNode *var;
   FunctionNode *func;
 
-  ExprNode(NodeType nodeType, int line, int startCol, AstNode *parent)
-      : AstNode(nodeType, line, startCol, parent) {
+  ExprNode(NodeType nodeType, std::string &filename, int line, int startCol,
+           AstNode *parent)
+      : AstNode(nodeType, filename, line, startCol, parent) {
     type = nullptr;
     var = nullptr;
     func = nullptr;
@@ -361,8 +386,9 @@ class ExprVarRefNode : public ExprNode {
 public:
   std::string _ident;
 
-  ExprVarRefNode(int line, int startCol, AstNode *parent, std::string varName)
-      : ExprNode(NodeType::VAR_REF, line, startCol, parent) {
+  ExprVarRefNode(std::string &filename, int line, int startCol, AstNode *parent,
+                 std::string varName)
+      : ExprNode(NodeType::VAR_REF, filename, line, startCol, parent) {
     this->_ident = varName;
   }
 };
@@ -372,9 +398,9 @@ public:
   ExprNode *_inner;
   ExprNode *_index;
 
-  ExprIndex(int line, int startCol, AstNode *parent, ExprNode *inner,
-            ExprNode *index)
-      : ExprNode(NodeType::INDEX_ACCESS, line, startCol, parent) {
+  ExprIndex(std::string &filename, int line, int startCol, AstNode *parent,
+            ExprNode *inner, ExprNode *index)
+      : ExprNode(NodeType::INDEX_ACCESS, filename, line, startCol, parent) {
     if (!inner || !index) {
       std::cerr << "Was not possible to open the file\n";
       exit(1);
@@ -397,9 +423,9 @@ public:
 
   StructDefNode *structDef;
 
-  ExprMemberAccess(int line, int startCol, AstNode *parent, ExprNode *_struct,
-                   std::string memberName)
-      : ExprNode(NodeType::MEMBER_ACCESS, line, startCol, parent) {
+  ExprMemberAccess(std::string &filename, int line, int startCol,
+                   AstNode *parent, ExprNode *_struct, std::string memberName)
+      : ExprNode(NodeType::MEMBER_ACCESS, filename, line, startCol, parent) {
     if (!_struct) {
       std::cerr << "struct cannot be null\n";
       exit(1);
@@ -419,8 +445,9 @@ public:
 
   FunctionNode *func;
 
-  ExprCallNode(int line, int startCol, AstNode *parent, ExprNode *ref)
-      : ExprNode(NodeType::FUNCCALL, line, startCol, parent) {
+  ExprCallNode(std::string &filename, int line, int startCol, AstNode *parent,
+               ExprNode *ref)
+      : ExprNode(NodeType::FUNCCALL, filename, line, startCol, parent) {
     this->_ref = ref;
     this->_children.push_back(ref);
     ref->_parent = this;
@@ -434,9 +461,9 @@ public:
   int _opNum;
   ExprNode *_right;
 
-  ExprBinaryNode(int line, int startCol, AstNode *parent, ExprNode *left,
-                 std::string op, int opNum, ExprNode *right)
-      : ExprNode(NodeType::EXPR_BINARY, line, startCol, parent) {
+  ExprBinaryNode(std::string &filename, int line, int startCol, AstNode *parent,
+                 ExprNode *left, std::string op, int opNum, ExprNode *right)
+      : ExprNode(NodeType::EXPR_BINARY, filename, line, startCol, parent) {
     this->_left = left;
     this->_op = op;
     this->_opNum = opNum;
@@ -455,9 +482,9 @@ public:
   int _opNum;
   ExprNode *_expr;
 
-  ExprUnaryNode(int line, int startCol, AstNode *parent, std::string op,
-                int opNum, ExprNode *expr)
-      : ExprNode(NodeType::EXPR_UNARY, line, startCol, parent) {
+  ExprUnaryNode(std::string &filename, int line, int startCol, AstNode *parent,
+                std::string op, int opNum, ExprNode *expr)
+      : ExprNode(NodeType::EXPR_UNARY, filename, line, startCol, parent) {
     this->_op = op;
     this->_opNum = opNum;
     this->_expr = expr;
@@ -471,9 +498,9 @@ public:
   std::string _rawValue;
   int _rawType;
 
-  ExprConstantNode(int line, int startCol, AstNode *parent,
-                   std::string rawValue, int rawType)
-      : ExprNode(NodeType::EXPR_CONSTANT, line, startCol, parent) {
+  ExprConstantNode(std::string &filename, int line, int startCol,
+                   AstNode *parent, std::string rawValue, int rawType)
+      : ExprNode(NodeType::EXPR_CONSTANT, filename, line, startCol, parent) {
     this->_rawValue = rawValue;
     this->_rawType = rawType;
   }

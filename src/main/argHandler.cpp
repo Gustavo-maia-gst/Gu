@@ -3,11 +3,12 @@
 #include <iostream>
 
 void ArgHandler::defArg(std::string name, std::set<std::string> validValues,
-                        std::string shortcut) {
+                        std::string shortcut, bool flag) {
   if (name.empty())
     return;
 
-  nameToValidValues[name] = validValues;
+  if (!flag)
+    nameToValidValues[name] = validValues;
   if (!shortcut.empty())
     shortcutToName[shortcut] = name;
 }
@@ -26,12 +27,12 @@ void ArgHandler::parseError(std::string msg) {
   std::cerr << "arg parsing error: " << msg << "\n";
   std::cerr << "usage: gu [OPTIONS] file\n";
   std::cerr << "Options:\n";
-  std::cerr << "\t[--assembly -S] [ obj | asm | basicIR | IR] -> Defines the "
-               "output format, the default is obj, asm are the Assembly format "
+  std::cerr << "\t[--assembly -S] [ exec | obj | asm | basicIR | IR] -> Defines the "
+               "output format, the default is exec, obj is a object file, asm is the Assembly format "
                "of the target machine, IR is the final generated IR and "
                "basicIR is the non-optimized basic form of IR\n";
   std::cerr
-      << "\t--output -o filename -> Uses the specified filename as output\n";
+      << "\t[--output -o] filename -> Uses the specified filename as output\n";
   std::cerr << "\t[--compile -c] -> Instructs to compile the code without main"
                "function validation\n";
   std::cerr << "\t[--opt -O] level -> Specify the optimization level to use "
@@ -53,21 +54,19 @@ void ArgHandler::parseArgs(int argc, char **argv) {
       }
 
       if (++i < argc) {
-        std::string value(argv[i]);
-        if (nameToValidValues.find(refName) != nameToValidValues.end()) {
-          bool isValid = nameToValidValues[refName].empty() ||
-                         nameToValidValues[refName].find(value) !=
-                             nameToValidValues[refName].end();
-          if (!isValid)
-            parseError("Invalid value for arg " + refName + ": " + value);
-        }
-
-        if (value[0] != '-')
-          nameToValue[refName] = value;
-        else {
+        if (nameToValidValues.find(refName) == nameToValidValues.end()) {
           nameToValue[refName] = "";
           i--;
         }
+
+        std::string value(argv[i]);
+        bool isValid = nameToValidValues[refName].empty() ||
+                       nameToValidValues[refName].find(value) !=
+                           nameToValidValues[refName].end();
+        if (!isValid)
+          parseError("Invalid value for arg " + refName + ": " + value);
+
+        nameToValue[refName] = value;
       }
     } else {
       posArgs.push_back(arg);

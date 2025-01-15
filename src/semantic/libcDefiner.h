@@ -17,7 +17,6 @@ class LibCDefiner {
 public:
   LibCDefiner();
   void addPosixSyscallsDefs(ProgramNode *node);
-  void addPosixSyscallsIRReferences(ProgramNode *node, Assembler *assembler);
 
 private:
   std::vector<SyscallDef> syscalls;

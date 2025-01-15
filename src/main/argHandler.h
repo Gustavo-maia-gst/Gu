@@ -9,7 +9,7 @@
 class ArgHandler {
 public:
   void defArg(std::string name, std::set<std::string> validValues = {},
-              std::string shortcut = "");
+              std::string shortcut = "", bool flag = false);
   std::pair<bool, std::string> getArg(std::string name);
   std::vector<std::string> &getPosArgs();
 

@@ -61,8 +61,6 @@ public:
   void validateIR();
   void generateObject(std::string out, bool useAsm = false);
 
-  void createExternReference(FunctionNode *node, std::string rawName);
-
   void visitProgram(ProgramNode *node);
   void visitFunction(FunctionNode *node);
   void visitIf(IfNode *node);

@@ -1,33 +1,53 @@
 #include "../codegen/llvm/assembler.h"
 #include "../lexer/lexer.h"
 #include "../parser/parser.h"
-#include "../semantic/libcDefiner.h"
+#include "../semantic/importManager.h"
 #include "../semantic/validator.h"
 #include "argHandler.h"
+#include <cstdlib>
 #include <string>
 
 ProgramNode *getProgramAst(std::string filename) {
+  ImportManager importManager;
+
   auto lexer = Lexer::fromFile(filename);
   AstParser parser(lexer);
-  return parser.parseProgram();
+
+  auto program = parser.parseProgram();
+  importManager.processImports(program);
+
+  return program;
 }
 
-void runValidator(ProgramNode *programAst, SemanticValidator *validator,
-                  LibCDefiner *libCDefiner) {
-  libCDefiner->addPosixSyscallsDefs(programAst);
+std::string getLoaderSuffix() {
+#if defined(__APPLE__)
+  return "-lSystem";
+#elif defined(__x86_64__)
+  return "-lc -dynamic-linker /lib64/ld-linux-x86-64.so.2";
+#elif defined(__i386__)
+  return "-lc -dynamic-linker /lib/ld-linux.so.2";
+#elif defined(__arm__)
+#elif defined(__aarch64__)
+  return "-lc -dynamic-linker /lib/ld-linux-aarch64.so.1"; // Para ARM 64-bit
+#else
+  std::cerr << "Not supported architecture\n";
+  exit(1);
+#endif
+}
+
+void runValidator(ProgramNode *programAst, SemanticValidator *validator) {
+
   validator->visitProgram(programAst);
   auto errors = validator->getErrors();
   if (errors.size()) {
-    std::cerr << "There are errors in the source code";
+    std::cerr << "There are errors in the source code:\n\n";
     for (auto err : errors)
       std::cerr << err << '\n';
     exit(1);
   }
 }
 
-void runAssembler(ProgramNode *programAst, Assembler *assembler,
-                  LibCDefiner *libCDefiner) {
-  libCDefiner->addPosixSyscallsIRReferences(programAst, assembler);
+void runAssembler(ProgramNode *programAst, Assembler *assembler) {
   assembler->visitProgram(programAst);
 }
 
@@ -36,7 +56,7 @@ void compile(Assembler *assembler, std::string out, char optLevel,
   if (asmType != "basicIR")
     assembler->optimize(optLevel);
 
-  if (asmType == "obj")
+  if (asmType == "obj" || asmType == "bin")
     assembler->generateObject(out);
   else if (asmType == "asm")
     assembler->generateObject(out, true);
@@ -46,35 +66,54 @@ void compile(Assembler *assembler, std::string out, char optLevel,
 
 int main(int argc, char **argv) {
   ArgHandler argHandler{};
-  argHandler.defArg("assembly", {"asm", "", "basicIR", "IR"}, "S");
+  argHandler.defArg("assembly", {"asm", "exec", "obj", "basicIR", "IR"}, "S");
   argHandler.defArg("output", {}, "o");
-  argHandler.defArg("compile", {""}, "c");
+  argHandler.defArg("compile", {""}, "c", true);
   argHandler.defArg("opt", {"0", "1", "2", "3"}, "O");
 
   argHandler.parseArgs(argc, argv);
 
-  auto [asmpresent, assemblyType] = argHandler.getArg("assembly");
-  auto [opresent, ouputName] = argHandler.getArg("output");
+  auto [asmpresent, asmType] = argHandler.getArg("assembly");
+  if (!asmpresent)
+    asmType = "exec";
+  auto [opresent, outputName] = argHandler.getArg("output");
   auto [cpresent, _] = argHandler.getArg("compile");
   auto [optpresent, optValue] = argHandler.getArg("opt");
-  if (!optpresent)
-    optValue = "3";
 
   auto filenames = argHandler.getPosArgs();
-  if (filenames.size() != 1)
-    argHandler.parseError("Expecting one file, got " +
-                          std::to_string(filenames.size()));
+  if (filenames.empty())
+    argHandler.parseError(
+        "Expecting at least one file and possibly some object files");
   auto filename = filenames[0];
 
-  SemanticValidator validator(cpresent);
-  LibCDefiner libCDefiner{};
+  SemanticValidator validator(!cpresent);
   Assembler assembler(!cpresent);
 
   auto programAst = getProgramAst(filename);
-  runValidator(programAst, &validator, &libCDefiner);
-  runAssembler(programAst, &assembler, &libCDefiner);
-  compile(&assembler, opresent ? ouputName : "a.o",
-          optpresent ? optValue[0] : '3', asmpresent ? assemblyType : "obj");
+  runValidator(programAst, &validator);
+  runAssembler(programAst, &assembler);
+
+  std::string outName = opresent ? outputName : "a.o";
+  bool toBinary = !cpresent && asmType == "exec";
+  if (cpresent && asmType == "exec") {
+    argHandler.parseError("Cannot compile an executable with -c");
+  }
+
+  compile(&assembler, toBinary ? "a.o" : outName,
+          optpresent ? optValue[0] : '2', asmType);
+
+  if (toBinary) {
+    std::string ldCommand = "ld a.o -o " + outName + " ";
+    for (ulint i = 1; i < filenames.size(); i++)
+      ldCommand += " " + filenames[i] + " ";
+    ldCommand += getLoaderSuffix();
+    int result = system(ldCommand.c_str());
+    system("rm a.o");
+    if (result) {
+      std::cerr << "There are errors during the linking phase\n";
+      exit(1);
+    }
+  }
 
   return 0;
 }

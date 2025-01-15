@@ -34,13 +34,15 @@ class Lexer {
 public:
   ~Lexer();
 
-  static Lexer *fromFile(std::string &path);
-  static Lexer *fromStream(std::istream *stream);
+  static Lexer *fromFile(std::string path);
+  static Lexer *fromStream(std::istream *stream, std::string filename);
   void setTypeMapper(std::map<std::string, int> *tokenMapper);
 
   const Token &look();
   const Token &get();
   void unget();
+
+  std::string &getFileName();
 
 private:
   Lexer();
@@ -54,6 +56,7 @@ private:
 
   int line = 1;
   int column = 1;
+  std::string filename;
 
   void nextToken();
   void nextToken_Indentifier();

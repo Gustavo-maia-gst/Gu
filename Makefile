@@ -16,6 +16,7 @@ FILES = src/main/main.cpp \
         src/parser/parser.cpp \
 		src/semantic/validator.cpp \
 		src/semantic/libcDefiner.cpp \
+		src/semantic/importManager.cpp \
 		src/codegen/translators/gu2c.cpp \
 		src/codegen/llvm/assembler.cpp
 

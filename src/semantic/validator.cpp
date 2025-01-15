@@ -63,14 +63,21 @@ void SemanticValidator::visitFunction(FunctionNode *node) {
     if (param->_defaultVal)
       compile_error("Assign in parameter declaration", node);
   }
+  function = node;
+
+  if (node->_external) {
+    if (!node->retType) {
+      node->visitChildren(this);
+      node->retType = node->_retTypeDef->dataType;
+    }
+    return;
+  }
 
   for (auto localVar : node->_innerVars) {
     if (node->localVars.find(localVar->_name) != node->localVars.end())
       compile_error("Duplicated local variable name", node);
     node->localVars[localVar->_name] = localVar;
   }
-
-  function = node;
 
   node->visitChildren(this);
   node->retType = node->_retTypeDef->dataType;
@@ -315,9 +322,17 @@ void SemanticValidator::visitExprConstant(ExprConstantNode *node) {
   case LEX_CHAR:
     node->type = DataType::fromChar(node->_rawValue);
     break;
-  case LEX_STRING:
-    node->type = DataType::fromString(node->_rawValue);
+  case LEX_STRING: {
+    std::string str = "";
+    ulint i = 0;
+    while (i < node->_rawValue.size()) {
+      unsigned char c = node->_rawValue[i++];
+      str += (c < 0x7f ? c : '?');
+    }
+    node->type = DataType::fromString(str);
+    node->_rawValue = str;
     break;
+  }
   default:
     unexpected_error("Non-constant _rawType in ExprConstantNode", node);
     return;
@@ -486,8 +501,8 @@ void SemanticValidator::visitExprCall(ExprCallNode *node) {
       return;
     }
 
-    auto refToStruct =
-        new ExprUnaryNode(node->_line, node->_startCol, node, "&", 0, _struct);
+    auto refToStruct = new ExprUnaryNode(
+        node->_filename, node->_line, node->_startCol, node, "&", 0, _struct);
 
     node->_args.insert(node->_args.begin(), refToStruct);
     node->func = node->_ref->func;
@@ -528,21 +543,19 @@ void SemanticValidator::unexpected_error(std::string msg, AstNode *node) {
 };
 
 void SemanticValidator::compile_error(std::string msg, AstNode *node) {
-  errors.push_back("compile error: " + msg +
-                   " at: " + std::to_string(node->_line) + ":" +
-                   std::to_string(node->_startCol));
+  errors.push_back(node->_filename + ":" + std::to_string(node->_line) + ":" +
+                   std::to_string(node->_startCol) +
+                   " compile error: " + msg);
 }
 
 void SemanticValidator::type_error(std::string msg, AstNode *node) {
-  errors.push_back("type error: " + msg +
-                   " at: " + std::to_string(node->_line) + ":" +
-                   std::to_string(node->_startCol));
+  errors.push_back(node->_filename + ":" + std::to_string(node->_line) + ":" +
+                   std::to_string(node->_startCol) + " type error: " + msg);
 }
 
 void SemanticValidator::name_error(std::string msg, AstNode *node) {
-  errors.push_back("name error: " + msg +
-                   " at: " + std::to_string(node->_line) + ":" +
-                   std::to_string(node->_startCol));
+  errors.push_back(node->_filename + ":" + std::to_string(node->_line) + ":" +
+                   std::to_string(node->_startCol) + " name error: " + msg);
 }
 
 VarDefNode *SemanticValidator::resolveVar(std::string &varName) {

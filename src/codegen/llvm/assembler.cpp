@@ -156,18 +156,6 @@ void Assembler::generateObject(std::string out, bool useAsm) {
   dest.flush();
 }
 
-void Assembler::createExternReference(FunctionNode *node, std::string rawName) {
-  std::vector<Type *> paramTypes;
-  for (auto param : node->_params)
-    paramTypes.push_back(getType(param->type));
-
-  auto retType = getType(node->retType);
-  auto funcType = FunctionType::get(retType, paramTypes, false);
-  auto func = Function::Create(funcType, Function::ExternalLinkage, rawName,
-                               *TheModule);
-  functionMap[node] = func;
-}
-
 Value *Assembler::loadValue(ExprNode *node) {
   node->visit(this);
   if (node->type->raw == RawDataType::ARRAY)
@@ -278,9 +266,11 @@ void Assembler::visitProgram(ProgramNode *node) {
   node->visitChildren(this);
 
   if (withEntrypoint) {
-    if (!main) error("Non-existing main function");
+    if (!main)
+      error("Non-existing main function");
     auto exitFuncDef = node->funcs["sys_exit"];
-    if (!exitFuncDef) error("libCDefiner has not been runned");
+    if (!exitFuncDef)
+      error("libCDefiner has not been runned");
     auto exitFunc = functionMap[exitFuncDef];
 
     auto startType = FunctionType::get(Type::getVoidTy(*TheContext), {}, false);
@@ -289,7 +279,7 @@ void Assembler::visitProgram(ProgramNode *node) {
     auto startBlock = BasicBlock::Create(*TheContext, "startBlock", start);
     Builder->SetInsertPoint(startBlock);
     auto statusCode = Builder->CreateCall(main, {}, "code");
-    Builder->CreateCall(exitFunc, { statusCode }, "exit");
+    Builder->CreateCall(exitFunc, {statusCode}, "exit");
     Builder->CreateRetVoid();
   }
 
@@ -322,9 +312,6 @@ void Assembler::visitFunction(FunctionNode *node) {
   if (funcName == "main")
     main = func;
 
-  auto block = BasicBlock::Create(*TheContext, node->_name, func);
-  Builder->SetInsertPoint(block);
-
   for (ulint i = 0; i < node->_params.size(); i++) {
     auto arg = func->getArg(i);
     auto paramDef = node->_params[i];
@@ -333,6 +320,11 @@ void Assembler::visitFunction(FunctionNode *node) {
     arg->setName(paramDef->_name);
     varContextMap[paramDef] = std::make_pair(paramType, arg);
   }
+
+  if (node->_external) return;
+
+  auto block = BasicBlock::Create(*TheContext, node->_name, func);
+  Builder->SetInsertPoint(block);
 
   for (auto &[varName, varDef] : node->localVars) {
     if (funcRegParams.find(varDef) != funcRegParams.end())
@@ -627,13 +619,7 @@ void Assembler::visitExprConstant(ExprConstantNode *node) {
         new GlobalVariable(*TheModule, stringPtr->getType(), true,
                            GlobalValue::ExternalLinkage, stringPtr, "string");
   } else if (node->type->raw == RawDataType::ARRAY) {
-    ulint i = 0;
-    std::string str = "";
-    while (i < node->_rawValue.size() && i < node->type->size) {
-      char c = node->_rawValue[i++];
-      str += c < 0x7f ? c : 0x1a;
-    }
-    current = ConstantDataArray::getString(*TheContext, str);
+    current = ConstantDataArray::getString(*TheContext, node->_rawValue);
   }
 }
 

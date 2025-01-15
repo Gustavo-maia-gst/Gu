@@ -1,9 +1,11 @@
 #include "lexer.h"
 #include <cctype>
+#include <filesystem>
 #include <iostream>
-#include <stdexcept>
 #include <string>
 #include <unordered_set>
+
+namespace fs = std::filesystem;
 
 // These characters are single-chars token
 const std::unordered_set<char> grammarChars = {'(', ')', '[', ']', '{',
@@ -16,7 +18,12 @@ Lexer::Lexer() {}
 
 Lexer::~Lexer() { delete this->stream; }
 
-Lexer *Lexer::fromFile(std::string &path) {
+Lexer *Lexer::fromFile(std::string path) {
+  if (!fs::exists(path)) {
+    std::cerr << "The file " + path + " does not exists.\n";
+    exit(1);
+  }
+
   auto fileStream = new std::ifstream(path);
   if (!fileStream) {
     std::cerr << "Was not possible to open the file\n";
@@ -25,16 +32,18 @@ Lexer *Lexer::fromFile(std::string &path) {
 
   auto sc = new Lexer;
   sc->stream = fileStream;
+  sc->filename = fs::canonical(path);
   return sc;
 }
 
-Lexer *Lexer::fromStream(std::istream *stream) {
+Lexer *Lexer::fromStream(std::istream *stream, std::string filename) {
   auto sc = new Lexer;
   sc->stream = stream;
   if (!sc->stream) {
     std::cerr << "Was not possible to open the file\n";
     exit(1);
   }
+  sc->filename = filename;
   return sc;
 }
 
@@ -43,6 +52,7 @@ void Lexer::setTypeMapper(std::map<std::string, int> *tokenMapper) {
 }
 
 const Token &Lexer::look() { return current; }
+std::string &Lexer::getFileName() { return filename; }
 
 void Lexer::unget() {
   if (ungetted) {
@@ -255,8 +265,9 @@ bool Lexer::reloadBuffer() {
 
 void inline Lexer::error(std::string msg) {
 
-  std::cerr << "lexer: " + msg + " | " + std::to_string(line) + ":" +
-                   std::to_string(column) + "\n";
+  std::cerr << filename + ":" + std::to_string(line) + ":" +
+                   std::to_string(column)
+            << " lexer: " + msg + " | " + "\n";
   exit(1);
 }
 

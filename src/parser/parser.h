@@ -9,6 +9,9 @@
 enum ProgramTokenType {
   UNMAPPED,
 
+  IMPORT,
+  DECLARATION_FILE,
+  EXPORT,
   FUNC,
   VAR,
   CONST,
@@ -83,6 +86,10 @@ private:
   Lexer *lexer;
   FunctionNode *function;
 
+  bool declaring = false;
+  bool exporting = false;
+
+  void parseImport(ProgramNode *parent);
   FunctionNode *parseFunction(AstNode *parent);
   StructDefNode *parseStruct(AstNode *parent);
   BodyNode *parseBlock(AstNode *parent);

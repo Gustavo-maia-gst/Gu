@@ -2,6 +2,9 @@
 #include "../ast/ast.h"
 
 std::map<std::string, int> baseTypeMapper = {
+    {"import", ProgramTokenType::IMPORT},
+    {"declarationfile", ProgramTokenType::DECLARATION_FILE},
+    {"export", ProgramTokenType::EXPORT},
     {"func", ProgramTokenType::FUNC},
     {"var", ProgramTokenType::VAR},
     {"const", ProgramTokenType::CONST},
@@ -96,26 +99,64 @@ AstParser::AstParser(Lexer *lexer) {
   PROGRAM: (FUNCTION | VAR_DEF)*
 */
 ProgramNode *AstParser::parseProgram() {
-  auto node = new ProgramNode(currLine(), currCol());
+  auto node = new ProgramNode(lexer->getFileName(), currLine(), currCol());
+
+  auto firstToken = lexer->get();
+  if (firstToken.mappedType == DECLARATION_FILE) {
+    declaring = true;
+    nextExpected(SEMICOLON, "Expecting semicolon");
+  } else
+    lexer->unget();
 
   while (lexer->get().rawType != TokenType::END_OF_INPUT) {
     auto current = lexer->look();
 
-    if (current.mappedType == FUNC)
+    switch (current.mappedType) {
+    case FUNC:
       parseFunction(node);
-    else if (current.mappedType == VAR || current.mappedType == CONST) {
+      break;
+    case VAR:
+    case CONST:
       parseVarDef(node, current.mappedType == CONST);
       nextExpected(SEMICOLON, "Expecting semicolon");
-    }
-    else if (current.mappedType == STRUCT)
+      break;
+    case STRUCT:
       parseStruct(node);
-    else
+      break;
+    case IMPORT:
+      parseImport(node);
+      break;
+    case EXPORT:
+      if (exporting)
+        sintax_error("Duplicated export token");
+      if (declaring)
+        sintax_error("Export after declare modifier");
+
+      exporting = true;
+      break;
+    default:
       sintax_error("Unexpected token: " + current.raw);
+    }
   }
 
   delete lexer;
 
   return node;
+}
+
+/*
+  IMPORT: IMPORT [ LEX_STRING | IDENTIFIER ]
+*/
+void AstParser::parseImport(ProgramNode *parent) {
+  auto importFrom = lexer->get();
+  if (importFrom.mappedType != IDENTIFIER &&
+      importFrom.mappedType != LEX_STRING) {
+    sintax_error("Invalid import statement, expecting module or file path");
+    return;
+  }
+  auto isRawImport = importFrom.mappedType == LEX_STRING;
+  parent->imports.push_back({importFrom.raw, isRawImport});
+  nextExpected(SEMICOLON, "Expecting semicolon after import statement");
 }
 
 /*
@@ -125,8 +166,11 @@ ProgramNode *AstParser::parseProgram() {
 FunctionNode *AstParser::parseFunction(AstNode *parent) {
   Token ident = nextExpected(IDENTIFIER, "Expecting identifier");
 
-  auto node = new FunctionNode(currLine(), currCol(), parent, ident.raw);
+  auto node = new FunctionNode(lexer->getFileName(), currLine(), currCol(),
+                               parent, ident.raw);
   function = node;
+  function->_export = exporting;
+  exporting = false;
 
   nextExpected(OPEN_PAR, "Expecting (");
 
@@ -144,6 +188,12 @@ FunctionNode *AstParser::parseFunction(AstNode *parent) {
   nextExpected(RET_TYPE, "Expecting ->");
 
   node->_retTypeDef = parseTypeDef(node);
+
+  if (declaring) {
+    node->_external = declaring;
+    return node;
+  }
+
   node->_body = parseBlock(node);
 
   return node;
@@ -155,7 +205,12 @@ FunctionNode *AstParser::parseFunction(AstNode *parent) {
 */
 StructDefNode *AstParser::parseStruct(AstNode *parent) {
   Token token = nextExpected(IDENTIFIER, "Expecting identifier");
-  auto node = new StructDefNode(currLine(), currCol(), parent, token.raw);
+  auto node = new StructDefNode(lexer->getFileName(), currLine(), currCol(),
+                                parent, token.raw);
+  node->_export = exporting;
+  exporting = false;
+  node->_external = declaring;
+
   nextExpected(OPEN_BRACES, "Expecting {");
 
   while ((token = lexer->get()).mappedType != CLOSE_BRACES) {
@@ -177,7 +232,7 @@ StructDefNode *AstParser::parseStruct(AstNode *parent) {
 BodyNode *AstParser::parseBlock(AstNode *parent) {
   nextExpected(OPEN_BRACES, "Expecting {");
 
-  auto node = new BodyNode(currLine(), currCol(), parent);
+  auto node = new BodyNode(lexer->getFileName(), currLine(), currCol(), parent);
 
   while (lexer->get().mappedType != CLOSE_BRACES) {
     if (lexer->look().rawType == TokenType::END_OF_INPUT)
@@ -223,12 +278,14 @@ AstNode *AstParser::parseStatement(AstNode *parent) {
     return node;
   }
   case BREAK: {
-    auto node = new BreakNode(currLine(), currCol(), parent);
+    auto node =
+        new BreakNode(lexer->getFileName(), currLine(), currCol(), parent);
     nextExpected(SEMICOLON, "Expecting semicolon after break");
     return node;
   }
   case RETURN: {
-    auto node = new ReturnNode(currLine(), currCol(), parent);
+    auto node =
+        new ReturnNode(lexer->getFileName(), currLine(), currCol(), parent);
     node->_expr = parseExpr(node);
     nextExpected(SEMICOLON, "Expecting semicolon after return");
     return node;
@@ -248,7 +305,7 @@ AstNode *AstParser::parseStatement(AstNode *parent) {
 IfNode *AstParser::parseIf(AstNode *parent) {
   nextExpected(IF, "Expecting IF");
 
-  auto node = new IfNode(currLine(), currCol(), parent);
+  auto node = new IfNode(lexer->getFileName(), currLine(), currCol(), parent);
 
   node->_expr = parseExpr(node);
   node->_ifBody = parseBlock(node);
@@ -268,7 +325,7 @@ IfNode *AstParser::parseIf(AstNode *parent) {
 ForNode *AstParser::parseFor(AstNode *parent) {
   nextExpected(FOR, "Expecting FOR");
 
-  auto node = new ForNode(currLine(), currCol(), parent);
+  auto node = new ForNode(lexer->getFileName(), currLine(), currCol(), parent);
 
   nextExpected(OPEN_PAR, "Expecting (");
 
@@ -290,7 +347,8 @@ ForNode *AstParser::parseFor(AstNode *parent) {
 */
 WhileNode *AstParser::parseWhile(AstNode *parent) {
   nextExpected(WHILE, "Expecting WHILE");
-  auto node = new WhileNode(currLine(), currCol(), parent);
+  auto node =
+      new WhileNode(lexer->getFileName(), currLine(), currCol(), parent);
 
   node->_expr = parseExpr(node);
   node->_body = parseBlock(node);
@@ -304,8 +362,12 @@ WhileNode *AstParser::parseWhile(AstNode *parent) {
 VarDefNode *AstParser::parseVarDef(AstNode *parent, bool constant) {
   auto token = nextExpected(IDENTIFIER, "Expecting identifier");
 
-  auto node =
-      new VarDefNode(currLine(), currCol(), parent, token.raw, constant);
+  auto node = new VarDefNode(lexer->getFileName(), currLine(), currCol(),
+                             parent, token.raw, constant);
+  node->_export = exporting;
+  exporting = false;
+  node->_external = declaring;
+
   nextExpected(IND_TYPE, "Expecting type indicator");
   node->_typeDef = parseTypeDef(node);
 
@@ -335,8 +397,8 @@ TypeDefNode *AstParser::parseTypeDef(AstNode *parent) {
     if (token.mappedType != OPEN_PAR)
       lexer->unget();
 
-    node =
-        TypeDefNode::buildPointer(parseTypeDef(parent), currLine(), currCol());
+    node = TypeDefNode::buildPointer(parseTypeDef(parent), lexer->getFileName(),
+                                     currLine(), currCol());
     node->_parent = parent;
     parent->_children.push_back(node);
 
@@ -347,16 +409,15 @@ TypeDefNode *AstParser::parseTypeDef(AstNode *parent) {
   }
 
   if (token.mappedType != IDENTIFIER)
-    std::cerr << "sintax error: " << "Expecting identifer" << " at line "
-              << std::to_string(token.line) << ':'
-              << std::to_string(token.start) << std::endl;
+    sintax_error("Expecting identifier");
 
-  node = TypeDefNode::build(token.raw, currLine(), currCol());
+  node = TypeDefNode::build(token.raw, lexer->getFileName(), currLine(),
+                            currCol());
 
   while ((token = lexer->get()).mappedType == OPEN_BRACKETS) {
     token = nextExpected(LEX_NUMBER, "Expecting array size");
-    node = TypeDefNode::buildArray(node, std::stoi(token.raw), currLine(),
-                                   currCol());
+    node = TypeDefNode::buildArray(node, lexer->getFileName(),
+                                   std::stoi(token.raw), currLine(), currCol());
     nextExpected(CLOSE_BRACKETS, "Expecting ]");
   }
   lexer->unget();
@@ -394,8 +455,9 @@ ExprNode *AstParser::parseExpr(AstNode *parent) {
       auto left = operands.top();
       operands.pop();
 
-      operands.push(new ExprBinaryNode(currLine(), currCol(), nullptr, left,
-                                       op.raw, op.mappedType, right));
+      operands.push(new ExprBinaryNode(lexer->getFileName(), currLine(),
+                                       currCol(), nullptr, left, op.raw,
+                                       op.mappedType, right));
     }
   };
 
@@ -403,7 +465,8 @@ ExprNode *AstParser::parseExpr(AstNode *parent) {
     auto index = parseExpr();
     auto expr = operands.top();
     operands.pop();
-    auto node = new ExprIndex(currLine(), currCol(), nullptr, expr, index);
+    auto node = new ExprIndex(lexer->getFileName(), currLine(), currCol(),
+                              nullptr, expr, index);
     nextExpected(CLOSE_BRACKETS, "Expecting ]");
     operands.push(node);
   };
@@ -411,7 +474,8 @@ ExprNode *AstParser::parseExpr(AstNode *parent) {
   auto processCall = [&](std::stack<ExprNode *> &operands) {
     auto funcRef = operands.top();
     operands.pop();
-    auto node = new ExprCallNode(currLine(), currCol(), nullptr, funcRef);
+    auto node = new ExprCallNode(lexer->getFileName(), currLine(), currCol(),
+                                 nullptr, funcRef);
 
     if ((lexer->get()).mappedType == CLOSE_PAR) {
       operands.push(node);
@@ -434,8 +498,8 @@ ExprNode *AstParser::parseExpr(AstNode *parent) {
     auto structRef = operands.top();
     operands.pop();
     auto ident = nextExpected(IDENTIFIER, "Expecting identifier");
-    auto node = new ExprMemberAccess(currLine(), currCol(), nullptr, structRef,
-                                     ident.raw);
+    auto node = new ExprMemberAccess(lexer->getFileName(), currLine(),
+                                     currCol(), nullptr, structRef, ident.raw);
     operands.push(node);
   };
 
@@ -489,15 +553,16 @@ ExprNode *AstParser::parseAtom(AstNode *parent) {
   case LEX_CHAR:
   case LEX_STRING:
   case LEX_NUMBER:
-    return new ExprConstantNode(currLine(), currCol(), parent, token.raw,
-                                token.mappedType);
+    return new ExprConstantNode(lexer->getFileName(), currLine(), currCol(),
+                                parent, token.raw, token.mappedType);
   case OPEN_PAR: {
     auto node = parseExpr(parent);
     nextExpected(CLOSE_PAR, "Expecting )");
     return node;
   }
   case IDENTIFIER: {
-    auto node = new ExprVarRefNode(currLine(), currCol(), nullptr, token.raw);
+    auto node = new ExprVarRefNode(lexer->getFileName(), currLine(), currCol(),
+                                   nullptr, token.raw);
 
     node->_parent = parent;
     if (parent)
@@ -510,8 +575,8 @@ ExprNode *AstParser::parseAtom(AstNode *parent) {
       sintax_error("Unexpected value reading expression: " + token.raw);
 
     auto atom = parseAtom(parent);
-    return new ExprUnaryNode(currLine(), currCol(), parent, token.raw,
-                             token.mappedType, atom);
+    return new ExprUnaryNode(lexer->getFileName(), currLine(), currCol(),
+                             parent, token.raw, token.mappedType, atom);
   }
   }
 }
@@ -526,8 +591,8 @@ const Token &AstParser::nextExpected(ProgramTokenType expectedType,
 
 void AstParser::sintax_error(std::string msg) {
   auto current = lexer->look();
-  std::cerr << "sintax error: " << msg << " at line "
-            << std::to_string(current.line) << ':'
-            << std::to_string(current.start) << std::endl;
+  std::cerr << lexer->getFileName() + ":" + std::to_string(currLine()) + ":" +
+                   std::to_string(currCol())
+            << " sintax error: " << msg << std::endl;
   exit(1);
 }

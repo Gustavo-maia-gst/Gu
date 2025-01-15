@@ -169,27 +169,18 @@ void LibCDefiner::addPosixSyscallsDefs(ProgramNode *node) {
   for (auto &syscall : syscalls) {
     auto realFuncName = getSyscallRealName(syscall.name);
     auto funcDef = buildFunc(realFuncName, syscall.args, syscall.retType, node);
-    node->funcs[realFuncName] = funcDef;
-    funcDef->external = true;
-  }
-}
 
-void LibCDefiner::addPosixSyscallsIRReferences(ProgramNode *node,
-                                               Assembler *assembler) {
-  for (auto &syscall : syscalls) {
-    auto syscallRealName = getSyscallRealName(syscall.name);
-    auto funcDef = node->funcs[syscallRealName];
-    if (!funcDef)
-      return;
-
-    assembler->createExternReference(funcDef, syscall.name);
+    node->_children.push_back(funcDef);
+    funcDef->_parent = node;
+    funcDef->_external = true;
   }
 }
 
 FunctionNode *LibCDefiner::buildFunc(std::string &name,
                                      std::vector<VarDefNode *> &params,
                                      DataType *retType, AstNode *parent) {
-  auto node = new FunctionNode(0, 0, nullptr, name);
+  std::string filename = "";
+  auto node = new FunctionNode(filename, 0, 0, nullptr, name);
   for (auto param : params) {
     node->_params.push_back(param);
     param->_parent = node;
@@ -200,7 +191,8 @@ FunctionNode *LibCDefiner::buildFunc(std::string &name,
 }
 
 VarDefNode *LibCDefiner::buildParam(std::string name, DataType *type) {
-  auto node = new VarDefNode(0, 0, nullptr, name);
+  std::string filename = "";
+  auto node = new VarDefNode(filename, 0, 0, nullptr, name);
   node->type = type;
   return node;
 }
