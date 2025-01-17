@@ -55,6 +55,12 @@ void SemanticValidator::visitProgram(ProgramNode *node) {
 }
 
 void SemanticValidator::visitFunction(FunctionNode *node) {
+  if (reservedFunctions.find(node->_name) != reservedFunctions.end()) {
+    name_error("Use of reserved function name " + node->_name, node);
+    node->retType = DataType::build(RawDataType::ERROR);
+    return;
+  }
+
   for (auto param : node->_params) {
     if (node->localVars.find(param->_name) != node->localVars.end())
       compile_error("Duplicated param name", node);
@@ -476,6 +482,9 @@ void SemanticValidator::visitIndexAccess(ExprIndex *node) {
 void SemanticValidator::visitExprCall(ExprCallNode *node) {
   if (node->_ref->getNodeType() == NodeType::VAR_REF) {
     auto funcName = ((ExprVarRefNode *)node->_ref)->_ident;
+    if (funcName == "sizeof")
+      return visitSizeOfCall(node);
+
     auto funcDef = resolveFunction(funcName);
     if (!funcDef) {
       name_error("Function " + funcName + " does not exists", node);
@@ -531,6 +540,25 @@ void SemanticValidator::visitExprCall(ExprCallNode *node) {
   }
 }
 
+void SemanticValidator::visitSizeOfCall(ExprCallNode *node) {
+  if (node->_args.size() != 1) {
+    node->type = DataType::build(RawDataType::ERROR);
+    compile_error("sizeof must receive exactly one parameter", node);
+  }
+  if (node->_args[0]->getNodeType() != NodeType::VAR_REF) {
+    node->type = DataType::build(RawDataType::ERROR);
+    compile_error("sizeof parameter must be a type or a reference", node);
+  }
+  auto varRef = (ExprVarRefNode *)node->_args[0];
+  auto var = resolveVar(varRef->_ident);
+  auto type= var ? var->type
+                      : DataType::build(TypeDefNode::build(
+                            varRef->_ident, varRef->_ident, 0, 0));
+  node->_ref->type = type;
+  node->_ref->var = var;
+  node->type = DataType::build(RawDataType::LONG);
+}
+
 void SemanticValidator::unexpected_error(std::string msg, AstNode *node) {
   errors.push_back(
       "Sorry, an unexpected error has occurred, please report it including "
@@ -544,8 +572,7 @@ void SemanticValidator::unexpected_error(std::string msg, AstNode *node) {
 
 void SemanticValidator::compile_error(std::string msg, AstNode *node) {
   errors.push_back(node->_filename + ":" + std::to_string(node->_line) + ":" +
-                   std::to_string(node->_startCol) +
-                   " compile error: " + msg);
+                   std::to_string(node->_startCol) + " compile error: " + msg);
 }
 
 void SemanticValidator::type_error(std::string msg, AstNode *node) {

@@ -1,7 +1,7 @@
 #include "../codegen/llvm/assembler.h"
 #include "../lexer/lexer.h"
 #include "../parser/parser.h"
-#include "../semantic/importManager.h"
+#include "../parser/processors/importManager.h"
 #include "../semantic/validator.h"
 #include "argHandler.h"
 #include <cstdlib>
@@ -53,10 +53,12 @@ void runAssembler(ProgramNode *programAst, Assembler *assembler) {
 
 void compile(Assembler *assembler, std::string out, char optLevel,
              std::string asmType) {
+  assembler->validateIR();
+
   if (asmType != "basicIR")
     assembler->optimize(optLevel);
 
-  if (asmType == "obj" || asmType == "bin")
+  if (asmType == "obj" || asmType == "exec")
     assembler->generateObject(out);
   else if (asmType == "asm")
     assembler->generateObject(out, true);

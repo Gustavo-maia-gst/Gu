@@ -169,6 +169,7 @@ void LibCDefiner::addPosixSyscallsDefs(ProgramNode *node) {
   for (auto &syscall : syscalls) {
     auto realFuncName = getSyscallRealName(syscall.name);
     auto funcDef = buildFunc(realFuncName, syscall.args, syscall.retType, node);
+    funcDef->_externName = syscall.name;
 
     node->_children.push_back(funcDef);
     funcDef->_parent = node;

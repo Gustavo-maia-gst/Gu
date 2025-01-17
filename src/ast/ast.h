@@ -2,6 +2,7 @@
 #define _ast
 #include <iostream>
 #include <map>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <sys/types.h>
@@ -168,6 +169,8 @@ private:
   NodeType nodeType;
 };
 
+const std::set<std::string> reservedFunctions = {"sizeof"};
+
 class ProgramNode : public AstNode {
 public:
   std::map<std::string, FunctionNode *> funcs;
@@ -195,6 +198,7 @@ public:
 class FunctionNode : public AstNode {
 public:
   std::string _name;
+  std::string _externName = "";
   std::vector<VarDefNode *> _params;
   std::vector<VarDefNode *> _innerVars;
   BodyNode *_body;
@@ -217,6 +221,7 @@ public:
 class StructDefNode : public AstNode {
 public:
   std::vector<AstNode *> _members;
+  std::vector<std::string> _genericArgNames;
   std::string _name;
   bool _export;
   bool _external;
@@ -326,6 +331,7 @@ public:
 
 class TypeDefNode : public AstNode {
 public:
+  std::vector<TypeDefNode *> genericArgsDefs;
   TypeDefNode *_pointsTo;
   TypeDefNode *_arrayOf;
   int _arrSize;

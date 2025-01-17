@@ -73,6 +73,8 @@ enum ProgramTokenType {
   SEMICOLON,
   IND_TYPE,
   RET_TYPE,
+  OPEN_GENERIC_TYPE = LT,
+  CLOSE_GENERIC_TYPE = GT,
 };
 
 class AstParser {

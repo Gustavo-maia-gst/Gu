@@ -34,6 +34,7 @@ public:
   void visitMemberAccess(ExprMemberAccess *node) override;
   void visitIndexAccess(ExprIndex *node) override;
   void visitExprCall(ExprCallNode *node) override;
+  void visitSizeOfCall(ExprCallNode *node);
 
   const std::vector<std::string> getErrors() { return errors; };
 

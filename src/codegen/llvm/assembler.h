@@ -75,6 +75,7 @@ public:
   void visitMemberAccess(ExprMemberAccess *node);
   void visitIndexAccess(ExprIndex *node);
   void visitExprCall(ExprCallNode *node);
+  void visitSizeof(ExprCallNode *node);
   void visitExprUnaryOp(ExprUnaryNode *node);
 
   void visitExprVarRef(ExprVarRefNode *node);
@@ -93,6 +94,7 @@ private:
   bool withEntrypoint;
   bool outWithReturn = false;
 
+  llvm::TargetMachine *target;
   llvm::Function *main = nullptr;
   llvm::Function *function = nullptr;
   std::set<VarDefNode *> funcRegParams;

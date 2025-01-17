@@ -15,8 +15,9 @@ FILES = src/main/main.cpp \
 		src/ast/ast.cpp \
         src/parser/parser.cpp \
 		src/semantic/validator.cpp \
-		src/semantic/libcDefiner.cpp \
-		src/semantic/importManager.cpp \
+		src/parser/processors/libcDefiner.cpp \
+		src/parser/processors/importManager.cpp \
+		src/parser/processors/astCloner.cpp \
 		src/codegen/translators/gu2c.cpp \
 		src/codegen/llvm/assembler.cpp
 

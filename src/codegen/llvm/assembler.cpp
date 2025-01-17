@@ -29,6 +29,29 @@ Assembler::Assembler(bool withEntrypoint) {
       {RawDataType::DOUBLE, Type::getDoubleTy(*TheContext)},
       {RawDataType::VOID, Type::getVoidTy(*TheContext)},
   };
+
+  llvm::InitializeAllTargetInfos();
+  llvm::InitializeAllTargets();
+  llvm::InitializeAllTargetMCs();
+  llvm::InitializeAllAsmParsers();
+  llvm::InitializeAllAsmPrinters();
+
+  std::string Error;
+  auto TargetTriple = LLVMGetDefaultTargetTriple();
+  auto Target = TargetRegistry::lookupTarget(TargetTriple, Error);
+
+  if (!Target) {
+    errs() << "Not supported architecture: " << std::string(TargetTriple)
+           << "\n";
+    errs() << Error << "\n";
+    exit(1);
+  }
+
+  TargetOptions opt;
+  target = Target->createTargetMachine(TargetTriple, "generic", "", opt,
+                                       Reloc::PIC_);
+  TheModule->setDataLayout(target->createDataLayout());
+  TheModule->setTargetTriple(TargetTriple);
 }
 
 std::stack<BasicBlock *> breakTo;
@@ -108,46 +131,26 @@ void Assembler::optimize(char optLevel) {
 
 void Assembler::validateIR() {
   if (verifyModule(*TheModule, &errs())) {
-    errs() << "The code has been generated with errors, please report it at "
+    errs() << "Sorry, the code has been generated with errors, please report "
+              "it including the source code at "
               "github: https://github.com/Gustavo-maia-gs/gu\n";
     exit(1);
   }
 }
 
 void Assembler::generateObject(std::string out, bool useAsm) {
-  llvm::InitializeAllTargetInfos();
-  llvm::InitializeAllTargets();
-  llvm::InitializeAllTargetMCs();
-  llvm::InitializeAllAsmParsers();
-  llvm::InitializeAllAsmPrinters();
-
-  std::string Error;
-  auto TargetTriple = LLVMGetDefaultTargetTriple();
-  auto Target = TargetRegistry::lookupTarget(TargetTriple, Error);
-
-  if (!Target) {
-    errs() << Error;
-    exit(1);
-  }
-
-  TargetOptions opt;
-  auto targetMachine = Target->createTargetMachine(TargetTriple, "generic", "",
-                                                   opt, Reloc::PIC_);
-  TheModule->setDataLayout(targetMachine->createDataLayout());
-  TheModule->setTargetTriple(TargetTriple);
-
   std::error_code err;
   raw_fd_ostream dest(out, err, sys::fs::OF_None);
 
   if (err) {
-    errs() << "Could not open file: " << err.message();
+    errs() << "Could not open file: " << err.message() << '\n';
     exit(1);
   }
   legacy::PassManager pass;
   auto FileType =
       useAsm ? CodeGenFileType::AssemblyFile : CodeGenFileType::ObjectFile;
 
-  if (targetMachine->addPassesToEmitFile(pass, dest, nullptr, FileType)) {
+  if (target->addPassesToEmitFile(pass, dest, nullptr, FileType)) {
     errs() << "TargetMachine can't emit a file of this type";
     exit(1);
   }
@@ -278,8 +281,10 @@ void Assembler::visitProgram(ProgramNode *node) {
                                   "_start", *TheModule);
     auto startBlock = BasicBlock::Create(*TheContext, "startBlock", start);
     Builder->SetInsertPoint(startBlock);
-    auto statusCode = Builder->CreateCall(main, {}, "code");
-    Builder->CreateCall(exitFunc, {statusCode}, "exit");
+    current = Builder->CreateCall(main, {}, "code");
+    auto statusCode = getCast(current, node->funcs["main"]->retType,
+                              DataType::build(RawDataType::INT));
+    Builder->CreateCall(exitFunc, {statusCode});
     Builder->CreateRetVoid();
   }
 
@@ -300,9 +305,11 @@ void Assembler::visitFunction(FunctionNode *node) {
   auto funcType = FunctionType::get(retType, paramTypes, false);
 
   auto funcName =
-      node->_name == "main"
-          ? "main"
-          : "func" + std::to_string(funcCounter++) + "_" + node->_name;
+      node->_externName.empty()
+          ? node->_name == "main"
+                ? "main"
+                : "func" + std::to_string(funcCounter++) + "_" + node->_name
+          : node->_externName;
   auto func = Function::Create(funcType, Function::ExternalLinkage, funcName,
                                *TheModule);
 
@@ -321,7 +328,8 @@ void Assembler::visitFunction(FunctionNode *node) {
     varContextMap[paramDef] = std::make_pair(paramType, arg);
   }
 
-  if (node->_external) return;
+  if (node->_external)
+    return;
 
   auto block = BasicBlock::Create(*TheContext, node->_name, func);
   Builder->SetInsertPoint(block);
@@ -386,8 +394,11 @@ void Assembler::visitIf(IfNode *node) {
   Builder->SetInsertPoint(ifBlock);
   node->_ifBody->visit(this);
   if (!outWithReturn) {
-    endBlock = BasicBlock::Create(*TheContext, "endBlock", function);
-    Builder->CreateBr(endBlock);
+    if (node->_elseBody) {
+      endBlock = BasicBlock::Create(*TheContext, "endBlock", function);
+      Builder->CreateBr(endBlock);
+    } else
+      Builder->CreateBr(elseBlock);
   }
 
   if (node->_elseBody) {
@@ -403,6 +414,8 @@ void Assembler::visitIf(IfNode *node) {
 
   if (endBlock)
     Builder->SetInsertPoint(endBlock);
+  else
+    Builder->SetInsertPoint(elseBlock);
 }
 
 void Assembler::visitWhile(WhileNode *node) {
@@ -526,6 +539,13 @@ void Assembler::visitIndexAccess(ExprIndex *node) {
 }
 
 void Assembler::visitExprCall(ExprCallNode *node) {
+  if (node->_ref->getNodeType() == NodeType::VAR_REF) {
+    auto varRef = (ExprVarRefNode *)node->_ref;
+    if (varRef->_ident == "sizeof") {
+      return visitSizeof(node);
+    }
+  }
+
   std::vector<Value *> args;
   for (ulint i = 0; i < node->_args.size(); i++) {
     auto loadedValue = loadValue(node->_args[i]);
@@ -537,6 +557,22 @@ void Assembler::visitExprCall(ExprCallNode *node) {
   auto func = functionMap[node->func];
 
   current = Builder->CreateCall(func, args, "call");
+}
+
+void Assembler::visitSizeof(ExprCallNode *node) {
+  auto varRef = (ExprVarRefNode *)node->_ref;
+  Type *type;
+  if (varRef->var) {
+    type = varContextMap[varRef->var].first;
+  } else {
+    type = structTypeMap[varRef->type->ident];
+  }
+  if (!type)
+    error("Invalid sizeof");
+
+  auto dataLayout = TheModule->getDataLayout();
+  ulint size = dataLayout.getTypeAllocSize(type);
+  current = ConstantInt::get(Type::getInt64Ty(*TheContext), size);
 }
 
 void Assembler::visitExprUnaryOp(ExprUnaryNode *node) {

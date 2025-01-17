@@ -1,7 +1,7 @@
 #ifndef _importManager
 #define _importManager
 
-#include "../parser/parser.h"
+#include "../parser.h"
 #include "libcDefiner.h"
 #include <cstdlib>
 #include <filesystem>

@@ -1,7 +1,7 @@
 #ifndef _libcDefiner
 #define _libcDefiner
 
-#include "../codegen/llvm/assembler.h"
+#include "../../codegen/llvm/assembler.h"
 
 struct SyscallDef {
   std::string name;

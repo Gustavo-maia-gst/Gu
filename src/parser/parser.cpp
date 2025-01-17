@@ -211,6 +211,18 @@ StructDefNode *AstParser::parseStruct(AstNode *parent) {
   exporting = false;
   node->_external = declaring;
 
+  if (lexer->get().mappedType == OPEN_GENERIC_TYPE) {
+    auto token = nextExpected(IDENTIFIER, "Expecting type identifier");
+    node->_genericArgNames.push_back(token.raw);
+    while (lexer->get().mappedType == COMMA) {
+      token = nextExpected(IDENTIFIER, "Expecting type identifier");
+      node->_genericArgNames.push_back(token.raw);
+    }
+    lexer->unget();
+    nextExpected(CLOSE_GENERIC_TYPE, "Expecting end of generic params list");
+  } else
+    lexer->unget();
+
   nextExpected(OPEN_BRACES, "Expecting {");
 
   while ((token = lexer->get()).mappedType != CLOSE_BRACES) {
@@ -420,7 +432,16 @@ TypeDefNode *AstParser::parseTypeDef(AstNode *parent) {
                                    std::stoi(token.raw), currLine(), currCol());
     nextExpected(CLOSE_BRACKETS, "Expecting ]");
   }
-  lexer->unget();
+  if (lexer->look().mappedType == OPEN_GENERIC_TYPE) {
+    node->genericArgsDefs.push_back(parseTypeDef(node));
+    while (lexer->get().mappedType == COMMA) {
+      token = nextExpected(IDENTIFIER, "Expecting type identifier");
+      node->genericArgsDefs.push_back(parseTypeDef(node));
+    }
+    lexer->unget();
+    nextExpected(CLOSE_GENERIC_TYPE, "Expecting end of generic params list");
+  } else
+    lexer->unget();
 
   node->_parent = parent;
   parent->_children.push_back(node);
