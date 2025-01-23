@@ -1,5 +1,6 @@
 #ifndef _ast
 #define _ast
+
 #include <iostream>
 #include <map>
 #include <set>
@@ -338,6 +339,13 @@ public:
   std::string _rawIdent;
   DataType *dataType;
 
+  TypeDefNode(std::string &filename, int line, int startCol)
+      : AstNode(NodeType::TYPE_DEF, filename, line, startCol, nullptr) {
+    _pointsTo = nullptr;
+    _arrayOf = nullptr;
+    dataType = nullptr;
+  }
+
   static TypeDefNode *build(std::string type, std::string &filename, int line,
                             int startCol) {
     auto typeDef = new TypeDefNode(filename, line, startCol);
@@ -361,14 +369,6 @@ public:
     innerType->_parent = typeDef;
     typeDef->_children.push_back(innerType);
     return typeDef;
-  }
-
-private:
-  TypeDefNode(std::string &filename, int line, int startCol)
-      : AstNode(NodeType::TYPE_DEF, filename, line, startCol, nullptr) {
-    _pointsTo = nullptr;
-    _arrayOf = nullptr;
-    dataType = nullptr;
   }
 };
 

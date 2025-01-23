@@ -24,6 +24,7 @@ public:
   void visitExprCall(ExprCallNode *node) override;
   void visitExprUnaryOp(ExprUnaryNode *node) override;
 
+
   void visitExprVarRef(ExprVarRefNode *node) override;
 
   void setUpdateType(std::string original, TypeDefNode *newType);
@@ -36,7 +37,6 @@ private:
   AstNode *cloned = nullptr;
   std::string prefix = "";
   std::map<std::string, TypeDefNode *> realTypeMapper;
-  std::map<AstNode *, AstNode *> cloneCache;
 };
 
 #endif

@@ -2,6 +2,7 @@
 #include "../lexer/lexer.h"
 #include "../parser/parser.h"
 #include "../parser/processors/importManager.h"
+#include "../parser/processors/generics.h"
 #include "../semantic/validator.h"
 #include "argHandler.h"
 #include <cstdlib>
@@ -9,12 +10,15 @@
 
 ProgramNode *getProgramAst(std::string filename) {
   ImportManager importManager;
+  AstCloner astCloner;
+  GenericsVisitor genericVisitor(&astCloner);
 
   auto lexer = Lexer::fromFile(filename);
   AstParser parser(lexer);
 
   auto program = parser.parseProgram();
   importManager.processImports(program);
+  genericVisitor.visitProgram(program);
 
   return program;
 }

@@ -357,6 +357,9 @@ void Assembler::visitFunction(FunctionNode *node) {
 }
 
 void Assembler::visitStructDef(StructDefNode *node) {
+  if (!node->_genericArgNames.empty())
+    return;
+
   auto structType = StructType::create(*TheContext, node->_name);
   structTypeMap[node->_name] = structType;
 

@@ -97,6 +97,8 @@ void SemanticValidator::visitStructDef(StructDefNode *node) {
 
   std::vector<FunctionNode *> structFuncs;
 
+  if (!node->_genericArgNames.empty()) return;
+
   for (auto member : node->_members) {
     switch (member->getNodeType()) {
     case NodeType::VAR_DEF: {
