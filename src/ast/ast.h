@@ -224,8 +224,8 @@ public:
   std::vector<AstNode *> _members;
   std::vector<std::string> _genericArgNames;
   std::string _name;
-  bool _export;
-  bool _external;
+  bool _export = false;
+  bool _external = false;
 
   std::map<std::string, VarDefNode *> membersDef;
   std::map<std::string, FunctionNode *> funcMembers;

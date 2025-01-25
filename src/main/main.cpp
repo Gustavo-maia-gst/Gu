@@ -2,7 +2,7 @@
 #include "../lexer/lexer.h"
 #include "../parser/parser.h"
 #include "../parser/processors/importManager.h"
-#include "../parser/processors/generics.h"
+#include "../parser/processors/templates.h"
 #include "../semantic/validator.h"
 #include "argHandler.h"
 #include <cstdlib>
@@ -11,7 +11,7 @@
 ProgramNode *getProgramAst(std::string filename) {
   ImportManager importManager;
   AstCloner astCloner;
-  GenericsVisitor genericVisitor(&astCloner);
+  TemplatesVisitor genericVisitor(&astCloner);
 
   auto lexer = Lexer::fromFile(filename);
   AstParser parser(lexer);
@@ -86,6 +86,10 @@ int main(int argc, char **argv) {
   auto [cpresent, _] = argHandler.getArg("compile");
   auto [optpresent, optValue] = argHandler.getArg("opt");
 
+  if (cpresent && asmType == "exec") {
+    argHandler.parseError("Cannot compile an executable with -c");
+  }
+
   auto filenames = argHandler.getPosArgs();
   if (filenames.empty())
     argHandler.parseError(
@@ -99,11 +103,8 @@ int main(int argc, char **argv) {
   runValidator(programAst, &validator);
   runAssembler(programAst, &assembler);
 
+  bool toBinary = asmType == "exec";
   std::string outName = opresent ? outputName : "a.o";
-  bool toBinary = !cpresent && asmType == "exec";
-  if (cpresent && asmType == "exec") {
-    argHandler.parseError("Cannot compile an executable with -c");
-  }
 
   compile(&assembler, toBinary ? "a.o" : outName,
           optpresent ? optValue[0] : '2', asmType);

@@ -31,7 +31,7 @@ void SemanticValidator::visitProgram(ProgramNode *node) {
     case NodeType::STRUCT_DEF: {
       auto structNode = (StructDefNode *)child;
       if (node->structDefs.find(structNode->_name) != node->structDefs.end())
-        compile_error("Duplicated function name: " + structNode->_name, node);
+        compile_error("Duplicated struct name: " + structNode->_name, node);
       node->structDefs[structNode->_name] = structNode;
       break;
     }

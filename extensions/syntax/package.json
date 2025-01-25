@@ -1,0 +1,41 @@
+{
+  "name": "syntax-highlighting-gu-language",
+  "displayName": "Gulang",
+  "description": "Implements syntax highlighting for the Gu language, a language developed by Gustavo Nogueira as part of his studies in compiler theory.",
+  "version": "0.0.2",
+  "publisher": "Gustavo-maia-gst",
+  "icon": "logo.png",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Gustavo-maia-gst/gu#extensions/syntax"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "gu",
+        "aliases": [
+          "Gulang",
+          "gu"
+        ],
+        "extensions": [
+          ".gu",
+          ".guh"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "gu",
+        "scopeName": "source.gu",
+        "path": "./syntaxes/gu.tmLanguage.json"
+      }
+    ]
+  }
+}

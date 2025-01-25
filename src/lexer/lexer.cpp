@@ -8,8 +8,6 @@
 namespace fs = std::filesystem;
 
 // These characters are single-chars token
-const std::unordered_set<char> grammarChars = {'(', ')', '[', ']', '{',
-                                               '}', ';', ',', '.'};
 const std::unordered_set<std::string> reservedWords = {
     "_LEXER__CHAR__", "_LEXER__STRING__", "_LEXER__NUMBER__",
     "_LEXER__IDENTIFIER__"};
@@ -102,7 +100,7 @@ void Lexer::nextToken_Indentifier() {
     s += getChar();
 
   if (reservedWords.find(s) != reservedWords.end())
-    error("Use of reserved word: " + s);
+    error("Use of lexer reserved word: " + s);
 
   current.raw = s;
   current.mappedType =
@@ -225,11 +223,9 @@ void Lexer::nextToken_Number() {
 void Lexer::nextToken_General() {
   std::string s = "";
   s += getChar();
-  if (grammarChars.find(s[0]) == grammarChars.end()) {
-    while (std::ispunct(lookChar()) &&
-           grammarChars.find(lookChar()) == grammarChars.end())
-      s += getChar();
-  }
+  while (std::ispunct(lookChar()) &&
+         tokenMapper->find(s + lookChar()) != tokenMapper->end())
+    s += getChar();
 
   current.raw = s;
   current.mappedType = tokenMapper ? (*tokenMapper)[s] : 0;

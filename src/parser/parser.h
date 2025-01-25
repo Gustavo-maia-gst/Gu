@@ -75,6 +75,8 @@ enum ProgramTokenType {
   RET_TYPE,
   OPEN_GENERIC_TYPE = LT,
   CLOSE_GENERIC_TYPE = GT,
+  OPEN_COMMENT,
+  CLOSE_COMMENT,
 };
 
 class AstParser {
@@ -103,6 +105,7 @@ private:
   TypeDefNode *parseTypeDef(AstNode *parent);
 
   ExprNode *parseAtom(AstNode *parent);
+  void parseComment();
 
   const Token &nextExpected(ProgramTokenType expectedType,
                             std::string errorMsg);

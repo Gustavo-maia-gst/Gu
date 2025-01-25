@@ -51,6 +51,8 @@ std::map<std::string, int> baseTypeMapper = {
     {";", ProgramTokenType::SEMICOLON},
     {"->", ProgramTokenType::RET_TYPE},
     {":", ProgramTokenType::IND_TYPE},
+    {"/*", ProgramTokenType::OPEN_COMMENT},
+    {"*/", ProgramTokenType::CLOSE_COMMENT},
 
     {"_LEXER__NUMBER__", ProgramTokenType::LEX_NUMBER},
     {"_LEXER__STRING__", ProgramTokenType::LEX_STRING},
@@ -134,6 +136,9 @@ ProgramNode *AstParser::parseProgram() {
 
       exporting = true;
       break;
+    case OPEN_COMMENT:
+      parseComment();
+      break;
     default:
       sintax_error("Unexpected token: " + current.raw);
     }
@@ -157,6 +162,17 @@ void AstParser::parseImport(ProgramNode *parent) {
   auto isRawImport = importFrom.mappedType == LEX_STRING;
   parent->imports.push_back({importFrom.raw, isRawImport});
   nextExpected(SEMICOLON, "Expecting semicolon after import statement");
+}
+
+/*
+  COMMENT: OPEN_COMMENT ANY* CLOSE_COMMENT
+*/
+void AstParser::parseComment() {
+  Token token;
+  while ((token = lexer->get()).mappedType != CLOSE_COMMENT) {
+    if (token.rawType == TokenType::END_OF_INPUT)
+      sintax_error("Unclosed comment");
+  }
 }
 
 /*
@@ -261,7 +277,10 @@ BodyNode *AstParser::parseBlock(AstNode *parent) {
   STATEMENT: IF | FOR | WHILE | VAR_DEF | BREAK | RETURN | EXPR
 */
 AstNode *AstParser::parseStatement(AstNode *parent) {
-  auto token = lexer->get();
+  Token token;
+
+  while ((token = lexer->get()).mappedType == OPEN_COMMENT)
+    parseComment();
 
   switch (token.mappedType) {
   case IF:

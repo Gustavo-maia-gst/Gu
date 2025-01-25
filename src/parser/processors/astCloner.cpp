@@ -10,7 +10,7 @@ void AstCloner::visitStructDef(StructDefNode *node) {
     member->visit(this);
     cloned->_parent = newNode;
     newNode->_children.push_back(cloned);
-    newNode->_members.push_back(member);
+    newNode->_members.push_back(cloned);
   }
   newNode->_export = node->_export;
 
@@ -153,8 +153,10 @@ void AstCloner::visitVarDef(VarDefNode *node) {
 }
 
 void AstCloner::visitTypeDefNode(TypeDefNode *node) {
-  if (realTypeMapper.find(node->_rawIdent) != realTypeMapper.end())
-    return realTypeMapper[node->_rawIdent]->visit(this);
+  if (realTypeMapper.find(node->_rawIdent) != realTypeMapper.end()) {
+    cloned = realTypeMapper[node->_rawIdent];
+    return;
+  }
 
   auto newNode = new TypeDefNode(node->_filename, node->_line, node->_startCol);
 

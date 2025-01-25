@@ -6,9 +6,9 @@
 #include <string>
 #include <utility>
 
-class GenericsVisitor : public BaseVisitor {
+class TemplatesVisitor : public BaseVisitor {
 public:
-  GenericsVisitor(AstCloner *astCloner) { this->astCloner = astCloner; }
+  TemplatesVisitor(AstCloner *astCloner) { this->astCloner = astCloner; }
 
   void visitTypeDefNode(TypeDefNode *node) override {
     node->visitChildren(this);
@@ -28,6 +28,7 @@ public:
 
       _struct = structChild;
       _iStruct = i;
+      break;
     }
 
     if (!_struct)
@@ -39,12 +40,23 @@ public:
       error("Invalid template argument size for struct " + node->_rawIdent +
             " expecting " + std::to_string(structGenericParams.size()));
 
-    auto implHash = generateArgsHash(node->genericArgsDefs);
+    auto implHash =
+        _struct->_name + "-" + generateArgsHash(node->genericArgsDefs);
     if (implementationMap.find(implHash) != implementationMap.end()) {
       auto structName = implementationMap[implHash];
-      auto structDef = program->structDefs[structName];
+      StructDefNode *structDef = nullptr;
+
+      for (auto node : program->_children) {
+        if (node->getNodeType() != NodeType::STRUCT_DEF)
+          continue;
+        auto _struct = (StructDefNode *)node;
+        if (_struct->_name != structName)
+          continue;
+        structDef = _struct;
+        break;
+      }
+
       node->_rawIdent = structDef->_name;
-      node->genericArgsDefs.clear();
       return;
     }
 
@@ -59,14 +71,14 @@ public:
 
     astCloner->visitStructDef(_struct);
     auto clonedStruct = (StructDefNode *)astCloner->getCloned();
-    program->structDefs[clonedStruct->_name] = clonedStruct;
-    clonedStruct->_parent = program;
 
+    clonedStruct->_parent = program;
     ulint index = program->_children.size();
     program->_children.push_back(clonedStruct);
-    while (index > _iStruct) {
-      std::swap(program->_children[index-1], program->_children[index]);
-      index--;
+    while (--index > _iStruct) {
+      auto temp = program->_children[index];
+      program->_children[index] = program->_children[index + 1];
+      program->_children[index + 1] = temp;
     }
 
     implementationMap[implHash] = clonedStruct->_name;
@@ -128,14 +140,6 @@ private:
     exit(1);
   }
 
-  std::string generateTypeHash(TypeDefNode *typeDef) {
-    if (typeDef->_pointsTo)
-      return "*" + generateTypeHash(typeDef);
-    if (typeDef->_arrayOf)
-      return "[]" + generateTypeHash(typeDef);
-    return typeDef->_rawIdent;
-  }
-
   std::string generateArgsHash(std::vector<TypeDefNode *> &args) {
     std::string hash = "";
     for (auto arg : args) {
@@ -145,11 +149,19 @@ private:
     return hash;
   }
 
+  std::string generateTypeHash(TypeDefNode *typeDef) {
+    if (typeDef->_pointsTo)
+      return "*" + generateTypeHash(typeDef->_pointsTo);
+    if (typeDef->_arrayOf)
+      return "[]" + generateTypeHash(typeDef->_arrayOf);
+    return typeDef->_rawIdent;
+  }
+
   std::string generateHash() {
     std::string hash = "";
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::uniform_int_distribution<> dis(0x60, 0x7a);
+    std::uniform_int_distribution<> dis(0x61, 0x7a);
 
     for (int i = 0; i < 20; i++)
       hash += dis(gen);
