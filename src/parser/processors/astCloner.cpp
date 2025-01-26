@@ -175,6 +175,12 @@ void AstCloner::visitTypeDefNode(TypeDefNode *node) {
     newNode->_children.push_back(cloned);
     cloned->_parent = newNode;
   }
+  for (auto arg: node->_genericArgsDefs) {
+    arg->visit(this);
+    newNode->_children.push_back(cloned);
+    cloned->_parent = newNode;
+    newNode->_genericArgsDefs.push_back((TypeDefNode *)cloned);
+  }
 
   cloned = newNode;
 }

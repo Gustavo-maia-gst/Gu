@@ -12,7 +12,7 @@ public:
 
   void visitTypeDefNode(TypeDefNode *node) override {
     node->visitChildren(this);
-    if (node->genericArgsDefs.empty())
+    if (node->_genericArgsDefs.empty())
       return;
 
     StructDefNode *_struct;
@@ -36,12 +36,12 @@ public:
 
     auto structGenericParams = _struct->_genericArgNames;
 
-    if (structGenericParams.size() != node->genericArgsDefs.size())
+    if (structGenericParams.size() != node->_genericArgsDefs.size())
       error("Invalid template argument size for struct " + node->_rawIdent +
             " expecting " + std::to_string(structGenericParams.size()));
 
     auto implHash =
-        _struct->_name + "-" + generateArgsHash(node->genericArgsDefs);
+        _struct->_name + "-" + generateArgsHash(node->_genericArgsDefs);
     if (implementationMap.find(implHash) != implementationMap.end()) {
       auto structName = implementationMap[implHash];
       StructDefNode *structDef = nullptr;
@@ -60,18 +60,15 @@ public:
       return;
     }
 
-    astCloner->clearUpdates();
-    astCloner->clearPrefix();
     auto prefix = generateHash();
     astCloner->setPrefix(prefix);
 
     for (ulint i = 0; i < structGenericParams.size(); i++)
       astCloner->setUpdateType(structGenericParams[i],
-                               node->genericArgsDefs[i]);
+                               node->_genericArgsDefs[i]);
 
     astCloner->visitStructDef(_struct);
     auto clonedStruct = (StructDefNode *)astCloner->getCloned();
-
     clonedStruct->_parent = program;
     ulint index = program->_children.size();
     program->_children.push_back(clonedStruct);
@@ -83,7 +80,9 @@ public:
 
     implementationMap[implHash] = clonedStruct->_name;
     node->_rawIdent = clonedStruct->_name;
-    node->genericArgsDefs.clear();
+    node->_genericArgsDefs.clear();
+
+    clonedStruct->visit(this);
   };
 
   void visitStructDef(StructDefNode *node) override {
@@ -94,6 +93,9 @@ public:
 
   void visitProgram(ProgramNode *node) override {
     program = node;
+    astCloner->clearPrefix();
+    astCloner->clearUpdates();
+
     node->visitChildren(this);
   };
 

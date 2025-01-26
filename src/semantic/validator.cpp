@@ -1,6 +1,6 @@
 #include "validator.h"
 
-const std::string MAIN_FUNC = "main";
+const std::set<std::string> logicalOps = {"==", "<", "<=", ">", ">=", "!="};
 
 inline bool isValidConditionType(DataType *type) {
   return DataType::isNumeric(type->raw) || DataType::isAddress(type->raw);
@@ -20,6 +20,7 @@ void SemanticValidator::visitProgram(ProgramNode *node) {
 
   for (auto child : node->_children) {
     auto childType = child->getNodeType();
+    child->visit(this);
     switch (childType) {
     case NodeType::FUNCTION: {
       auto funcNode = (FunctionNode *)child;
@@ -30,6 +31,9 @@ void SemanticValidator::visitProgram(ProgramNode *node) {
     }
     case NodeType::STRUCT_DEF: {
       auto structNode = (StructDefNode *)child;
+      if (!structNode->_genericArgNames.empty())
+        break;
+
       if (node->structDefs.find(structNode->_name) != node->structDefs.end())
         compile_error("Duplicated struct name: " + structNode->_name, node);
       node->structDefs[structNode->_name] = structNode;
@@ -48,10 +52,16 @@ void SemanticValidator::visitProgram(ProgramNode *node) {
     }
   }
 
-  if (!node->funcs[MAIN_FUNC] && validateMain)
+  if (!node->funcs[MAIN_FUNC] && validateMain) {
     compile_error("main function not defined ", node);
-
-  node->visitChildren(this);
+    return;
+  }
+  if (validateMain) {
+    auto mainFn = node->funcs[MAIN_FUNC];
+    if (mainFn->_retTypeDef->_rawIdent != "int") {
+      type_error("main function return type should be int", node);
+    }
+  }
 }
 
 void SemanticValidator::visitFunction(FunctionNode *node) {
@@ -93,11 +103,12 @@ void SemanticValidator::visitFunction(FunctionNode *node) {
 }
 
 void SemanticValidator::visitStructDef(StructDefNode *node) {
+  if (!node->_genericArgNames.empty())
+    return;
+
   int currentOffset = 0;
 
   std::vector<FunctionNode *> structFuncs;
-
-  if (!node->_genericArgNames.empty()) return;
 
   for (auto member : node->_members) {
     switch (member->getNodeType()) {
@@ -130,6 +141,8 @@ void SemanticValidator::visitStructDef(StructDefNode *node) {
 
   for (auto funcNode : structFuncs) {
     funcNode->visit(this);
+    if (funcNode->retType->raw == RawDataType::ERROR)
+      continue;
 
     if (node->membersDef.find(funcNode->_name) != node->membersDef.end())
       compile_error("Duplicated name for function, there are another struct "
@@ -142,12 +155,16 @@ void SemanticValidator::visitStructDef(StructDefNode *node) {
                         funcNode->_name,
                     node);
 
+    if (funcNode->_name == INIT_FUNC)
+      if (funcNode->retType->raw != RawDataType::VOID)
+        compile_error("Init function should be void", node);
+
     node->funcMembers[funcNode->_name] = funcNode;
 
     auto wrongParameter = [&]() {
       compile_error(
           "Function " + funcNode->_name +
-              " has no parameters, function defined inside structs should "
+              " has invalid parameters, function defined inside structs should "
               "receive a pointer to the struct as first parameter",
           node);
     };
@@ -205,6 +222,57 @@ void SemanticValidator::visitVarDef(VarDefNode *node) {
     if (node->_defaultVal->getNodeType() == NodeType::EXPR_CONSTANT)
       node->_defaultVal->type = node->type;
   }
+
+  bool hasInitArgs = !node->_initArgs.empty();
+
+  if (node->type->raw != RawDataType::STRUCT) {
+    if (hasInitArgs)
+      compile_error("Providing init args to non-struct type", node);
+    return;
+  }
+
+  auto structDef = resolveStruct(node->type->ident);
+  if (!structDef) {
+    node->type = DataType::build(RawDataType::ERROR);
+    return;
+  }
+
+  bool structHasInit =
+      structDef->funcMembers.find(INIT_FUNC) != structDef->funcMembers.end();
+  bool structInitHasArgs =
+      structHasInit && structDef->funcMembers[INIT_FUNC]->_params.size() > 0;
+
+  if (!hasInitArgs && structInitHasArgs) {
+    compile_error("Init args for struct " + structDef->_name +
+                      " were not provided",
+                  node);
+    node->type = DataType::build(RawDataType::ERROR);
+    return;
+  }
+  if (hasInitArgs && !structInitHasArgs) {
+    compile_error("Init args were provided for struct " + structDef->_name +
+                      ", but the struct init does not have params",
+                  node);
+    node->type = DataType::build(RawDataType::ERROR);
+    return;
+  }
+  if (node->_defaultVal && hasInitArgs) {
+    compile_error("Default value and init args provided", node);
+    return;
+  }
+  if (!structInitHasArgs)
+    return;
+
+  auto funcNode = structDef->funcMembers[INIT_FUNC];
+
+  auto varRef = new ExprVarRefNode(node->_filename, node->_line,
+                                   node->_startCol, node, node->_name);
+  auto refToStruct = new ExprUnaryNode(node->_filename, node->_line,
+                                       node->_startCol, node, "&", 0, varRef);
+
+  node->_initArgs.insert(node->_initArgs.begin(), refToStruct);
+
+  validateArgs(funcNode, node->_initArgs);
 }
 
 void SemanticValidator::visitIf(IfNode *node) {
@@ -522,24 +590,7 @@ void SemanticValidator::visitExprCall(ExprCallNode *node) {
     compile_error("Calling non-function type", node);
   }
 
-  if (node->_args.size() != node->func->_params.size()) {
-    compile_error("Invalid argument count for function + " + node->func->_name,
-                  node);
-    return;
-  }
-
-  for (ulint i = 0; i < node->_args.size(); i++) {
-    node->_args[i]->visit(this);
-    auto castedType = DataType::getResultType(node->func->_params[i]->type, "=",
-                                              node->_args[i]->type);
-    bool validType = castedType->equals(node->func->_params[i]->type);
-    if (!validType) {
-      type_error("Invalid type for argument " + std::to_string(i) +
-                     " in function call",
-                 node);
-      return;
-    }
-  }
+  validateArgs(node->func, node->_args);
 }
 
 void SemanticValidator::visitSizeOfCall(ExprCallNode *node) {
@@ -553,12 +604,35 @@ void SemanticValidator::visitSizeOfCall(ExprCallNode *node) {
   }
   auto varRef = (ExprVarRefNode *)node->_args[0];
   auto var = resolveVar(varRef->_ident);
-  auto type= var ? var->type
-                      : DataType::build(TypeDefNode::build(
-                            varRef->_ident, varRef->_ident, 0, 0));
+  auto type = var ? var->type
+                  : DataType::build(TypeDefNode::build(varRef->_ident,
+                                                       varRef->_ident, 0, 0));
   node->_ref->type = type;
   node->_ref->var = var;
   node->type = DataType::build(RawDataType::LONG);
+}
+
+void SemanticValidator::validateArgs(FunctionNode *node,
+                                     std::vector<ExprNode *> &args) {
+  if (args.size() != node->_params.size()) {
+    compile_error("Invalid argument count for function " + node->_name, node);
+    return;
+  }
+
+  for (ulint i = 0; i < args.size(); i++) {
+    args[i]->visit(this);
+    auto castedType =
+        DataType::getResultType(node->_params[i]->type, "=", args[i]->type);
+    bool validType = castedType->equals(node->_params[i]->type);
+    if (!validType) {
+      type_error("Invalid type for argument " + std::to_string(i) +
+                     " in function call",
+                 node);
+      return;
+    }
+    if (args[i]->getNodeType() == NodeType::EXPR_CONSTANT)
+      args[i]->type = node->_params[i]->type;
+  }
 }
 
 void SemanticValidator::unexpected_error(std::string msg, AstNode *node) {
@@ -609,9 +683,16 @@ StructDefNode *SemanticValidator::resolveStruct(std::string &structName) {
   if (!program)
     return nullptr;
 
-  return program->structDefs.find(structName) != program->structDefs.end()
-             ? program->structDefs[structName]
-             : nullptr;
+  bool structExists =
+      program->structDefs.find(structName) != program->structDefs.end();
+  if (!structExists)
+    return nullptr;
+
+  auto structDef = program->structDefs[structName];
+  if (!structDef->_genericArgNames.empty())
+    return nullptr;
+
+  return structDef;
 }
 
 FunctionNode *SemanticValidator::resolveFunction(std::string &funcName) {

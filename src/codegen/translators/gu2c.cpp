@@ -9,7 +9,7 @@ void Gu2CVisitor::visitFunction(FunctionNode *node) {
   node->_retTypeDef->visit(this);
 
   std::string funcName = "func" + std::to_string(funcCounter++);
-  if (node->_name == "main")
+  if (node->_name == MAIN_FUNC)
     funcName = node->_name;
 
   writeText(" " + funcName + "(");

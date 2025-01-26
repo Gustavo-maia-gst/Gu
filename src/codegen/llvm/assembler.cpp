@@ -5,6 +5,7 @@
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Type.h>
+#include <llvm/IR/Value.h>
 #include <llvm/Support/CodeGen.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/TargetParser/Triple.h>
@@ -190,7 +191,7 @@ Type *Assembler::getType(DataType *type) {
   if (type->raw == RawDataType::STRUCT) {
     auto mappedStruct = structTypeMap[type->ident];
     if (!mappedStruct)
-      error("Invalid struct" + type->ident);
+      error("Invalid struct " + type->ident);
 
     return mappedStruct;
   }
@@ -266,6 +267,8 @@ Value *Assembler::getCondition(ExprNode *node, bool invert) {
 }
 
 void Assembler::visitProgram(ProgramNode *node) {
+  program = node;
+
   node->visitChildren(this);
 
   if (withEntrypoint) {
@@ -282,7 +285,7 @@ void Assembler::visitProgram(ProgramNode *node) {
     auto startBlock = BasicBlock::Create(*TheContext, "startBlock", start);
     Builder->SetInsertPoint(startBlock);
     current = Builder->CreateCall(main, {}, "code");
-    auto statusCode = getCast(current, node->funcs["main"]->retType,
+    auto statusCode = getCast(current, node->funcs[MAIN_FUNC]->retType,
                               DataType::build(RawDataType::INT));
     Builder->CreateCall(exitFunc, {statusCode});
     Builder->CreateRetVoid();
@@ -306,17 +309,20 @@ void Assembler::visitFunction(FunctionNode *node) {
 
   auto funcName =
       node->_externName.empty()
-          ? node->_name == "main"
-                ? "main"
+          ? node->_name == MAIN_FUNC
+                ? MAIN_FUNC
                 : "func" + std::to_string(funcCounter++) + "_" + node->_name
           : node->_externName;
   auto func = Function::Create(funcType, Function::ExternalLinkage, funcName,
                                *TheModule);
 
   functionMap[node] = func;
+  if (node->_external)
+    return;
+
   function = func;
 
-  if (funcName == "main")
+  if (funcName == MAIN_FUNC)
     main = func;
 
   for (ulint i = 0; i < node->_params.size(); i++) {
@@ -327,9 +333,6 @@ void Assembler::visitFunction(FunctionNode *node) {
     arg->setName(paramDef->_name);
     varContextMap[paramDef] = std::make_pair(paramType, arg);
   }
-
-  if (node->_external)
-    return;
 
   auto block = BasicBlock::Create(*TheContext, node->_name, func);
   Builder->SetInsertPoint(block);
@@ -345,7 +348,7 @@ void Assembler::visitFunction(FunctionNode *node) {
 
   node->_body->visit(this);
   if (node->retType->raw == RawDataType::VOID) {
-    if (!block->getTerminator())
+    if (!outWithReturn)
       Builder->CreateRetVoid();
   }
 
@@ -476,33 +479,47 @@ void Assembler::visitFor(ForNode *node) {
 }
 
 void Assembler::visitVarDef(VarDefNode *node) {
-  if (function) {
-    if (!node->_defaultVal)
-      return;
+  if (!function) {
+    Value *constant = nullptr;
+    if (node->_defaultVal) {
+      node->_defaultVal->visit(this);
+      constant = current;
+    }
 
-    auto defaultVal = loadValue(node->_defaultVal);
-    auto castedVal = getCast(defaultVal, node->_defaultVal->type, node->type);
+    auto varType = getType((node->type));
+    auto globalVar = new GlobalVariable(*TheModule, varType, node->_constant,
+                                        GlobalValue::ExternalLinkage,
+                                        (Constant *)constant, node->_name);
 
-    auto varPtr = varContextMap[node].second;
-    if (!varPtr)
-      error("Invalid varDef");
-
-    Builder->CreateStore(castedVal, varPtr);
+    varContextMap[node] = std::make_pair(varType, globalVar);
     return;
   }
 
-  Value *constant = nullptr;
-  if (node->_defaultVal) {
-    node->_defaultVal->visit(this);
-    constant = current;
+  if (!node->_defaultVal) {
+    if (!node->_initArgs.empty()) {
+      auto structDef = program->structDefs[node->type->ident];
+      auto initFunc = functionMap[structDef->funcMembers[INIT_FUNC]];
+      std::vector<Value *> args;
+      for (auto arg : node->_initArgs) {
+        arg->visit(this);
+        args.push_back(current);
+      }
+
+      Builder->CreateCall(initFunc, args);
+    }
+
+    return;
   }
 
-  auto varType = getType((node->type));
-  auto globalVar = new GlobalVariable(*TheModule, varType, node->_constant,
-                                      GlobalValue::ExternalLinkage,
-                                      (Constant *)constant, node->_name);
+  auto defaultVal = loadValue(node->_defaultVal);
+  auto castedVal = getCast(defaultVal, node->_defaultVal->type, node->type);
 
-  varContextMap[node] = std::make_pair(varType, globalVar);
+  auto varPtr = varContextMap[node].second;
+  if (!varPtr)
+    error("Invalid varDef");
+
+  Builder->CreateStore(castedVal, varPtr);
+  return;
 }
 
 void Assembler::visitBreakNode(BreakNode *node) {
@@ -580,15 +597,17 @@ void Assembler::visitSizeof(ExprCallNode *node) {
 
 void Assembler::visitExprUnaryOp(ExprUnaryNode *node) {
   auto exprType = getType(node->_expr->type);
-  auto exprValue = loadValue(node->_expr);
+  Value *exprValue;
 
   switch (node->_op[0]) {
   case '-':
+    exprValue = loadValue(node->_expr);
     current = DataType::isFloat(node->_expr->type->raw)
                   ? Builder->CreateFNeg(exprValue)
                   : Builder->CreateNeg(exprValue);
     break;
   case '+': {
+    exprValue = loadValue(node->_expr);
     auto zero = getZero(node->_expr->type);
 
     auto isNegative = DataType::isFloat(node->_expr->type->raw)
@@ -602,12 +621,19 @@ void Assembler::visitExprUnaryOp(ExprUnaryNode *node) {
     break;
   }
   case '*':
+    exprValue = loadValue(node->_expr);
     current = Builder->CreateLoad(exprType, exprValue, "derreferenced");
     break;
-  case '&':
-    current = exprValue;
+  case '&': {
+    auto localVar =
+        Builder->CreateAlloca(getType(node->type), nullptr, "address");
+    node->_expr->visit(this);
+    Builder->CreateStore(current, localVar);
+    current = localVar;
     break;
+  }
   case '!': {
+    exprValue = loadValue(node->_expr);
     auto zero = getZero(node->_expr->type);
 
     auto one32 = Builder->getInt32(1);
@@ -663,53 +689,54 @@ void Assembler::visitExprConstant(ExprConstantNode *node) {
 }
 
 void Assembler::visitExprBinaryOp(ExprBinaryNode *node) {
-  static std::map<std::string, std::function<void(Value *, Value *)>>
+  static std::map<std::string,
+                  std::function<void(ExprBinaryNode *, Value *, Value *)>>
       binaryOpHandlers = {
           {"+",
-           [this, node](Value *left, Value *right) {
+           [this](ExprBinaryNode *node, Value *left, Value *right) {
              if (DataType::isFloat(node->type->raw))
                current = Builder->CreateFAdd(left, right, "add");
              else
                current = Builder->CreateAdd(left, right);
            }},
           {"-",
-           [this, node](Value *left, Value *right) {
+           [this](ExprBinaryNode *node, Value *left, Value *right) {
              if (DataType::isFloat(node->type->raw))
                current = Builder->CreateFSub(left, right, "add");
              else
                current = Builder->CreateSub(left, right);
            }},
           {"*",
-           [this, node](Value *left, Value *right) {
+           [this](ExprBinaryNode *node, Value *left, Value *right) {
              if (DataType::isFloat(node->type->raw))
                current = Builder->CreateFMul(left, right, "add");
              else
                current = Builder->CreateMul(left, right);
            }},
           {"/",
-           [this, node](Value *left, Value *right) {
+           [this](ExprBinaryNode *node, Value *left, Value *right) {
              if (DataType::isFloat(node->type->raw))
                current = Builder->CreateFDiv(left, right, "add");
              else
                current = Builder->CreateSDiv(left, right);
            }},
           {"%",
-           [this, node](Value *left, Value *right) {
+           [this](ExprBinaryNode *node, Value *left, Value *right) {
              if (DataType::isFloat(node->type->raw))
                current = Builder->CreateFRem(left, right, "add");
              else
                current = Builder->CreateSRem(left, right);
            }},
           {">>",
-           [this, node](Value *left, Value *right) {
+           [this](ExprBinaryNode *node, Value *left, Value *right) {
              current = Builder->CreateAShr(left, right);
            }},
           {"<<",
-           [this, node](Value *left, Value *right) {
+           [this](ExprBinaryNode *node, Value *left, Value *right) {
              current = Builder->CreateShl(left, right);
            }},
           {">",
-           [this, node](Value *left, Value *right) {
+           [this](ExprBinaryNode *node, Value *left, Value *right) {
              auto zero = getZero(node->type);
              auto one = getOne(node->type);
              auto isGreater = DataType::isFloat(node->type->raw)
@@ -718,7 +745,7 @@ void Assembler::visitExprBinaryOp(ExprBinaryNode *node) {
              current = Builder->CreateSelect(isGreater, one, zero);
            }},
           {"<",
-           [this, node](Value *left, Value *right) {
+           [this](ExprBinaryNode *node, Value *left, Value *right) {
              auto zero = getZero(node->type);
              auto one = getOne(node->type);
              auto isGreater = DataType::isFloat(node->type->raw)
@@ -727,7 +754,7 @@ void Assembler::visitExprBinaryOp(ExprBinaryNode *node) {
              current = Builder->CreateSelect(isGreater, one, zero);
            }},
           {">=",
-           [this, node](Value *left, Value *right) {
+           [this](ExprBinaryNode *node, Value *left, Value *right) {
              auto zero = getZero(node->type);
              auto one = getOne(node->type);
              auto isGreater = DataType::isFloat(node->type->raw)
@@ -736,7 +763,7 @@ void Assembler::visitExprBinaryOp(ExprBinaryNode *node) {
              current = Builder->CreateSelect(isGreater, one, zero);
            }},
           {"<=",
-           [this, node](Value *left, Value *right) {
+           [this](ExprBinaryNode *node, Value *left, Value *right) {
              auto zero = getZero(node->type);
              auto one = getOne(node->type);
              auto isGreater = DataType::isFloat(node->type->raw)
@@ -745,7 +772,7 @@ void Assembler::visitExprBinaryOp(ExprBinaryNode *node) {
              current = Builder->CreateSelect(isGreater, one, zero);
            }},
           {"==",
-           [this, node](Value *left, Value *right) {
+           [this](ExprBinaryNode *node, Value *left, Value *right) {
              auto zero = getZero(node->type);
              auto one = getOne(node->type);
              auto isGreater = DataType::isFloat(node->type->raw)
@@ -754,7 +781,7 @@ void Assembler::visitExprBinaryOp(ExprBinaryNode *node) {
              current = Builder->CreateSelect(isGreater, one, zero);
            }},
           {"!=",
-           [this, node](Value *left, Value *right) {
+           [this](ExprBinaryNode *node, Value *left, Value *right) {
              auto zero = getZero(node->type);
              auto one = getOne(node->type);
              auto isGreater = DataType::isFloat(node->type->raw)
@@ -763,7 +790,7 @@ void Assembler::visitExprBinaryOp(ExprBinaryNode *node) {
              current = Builder->CreateSelect(isGreater, one, zero);
            }},
           {"&&",
-           [this, node](Value *left, Value *right) {
+           [this](ExprBinaryNode *node, Value *left, Value *right) {
              auto zero = getZero(node->type);
 
              auto leftNonZero = DataType::isFloat(node->type->raw)
@@ -775,7 +802,7 @@ void Assembler::visitExprBinaryOp(ExprBinaryNode *node) {
              current = Builder->CreateAnd(leftNonZero, rightNonZero);
            }},
           {"||",
-           [this, node](Value *left, Value *right) {
+           [this](ExprBinaryNode *node, Value *left, Value *right) {
              auto zero = getZero(node->type);
 
              auto leftNonZero = DataType::isFloat(node->type->raw)
@@ -787,15 +814,15 @@ void Assembler::visitExprBinaryOp(ExprBinaryNode *node) {
              current = Builder->CreateOr(leftNonZero, rightNonZero);
            }},
           {"&",
-           [this, node](Value *left, Value *right) {
+           [this](ExprBinaryNode *node, Value *left, Value *right) {
              current = Builder->CreateAnd(left, right);
            }},
           {"|",
-           [this, node](Value *left, Value *right) {
+           [this](ExprBinaryNode *node, Value *left, Value *right) {
              current = Builder->CreateOr(left, right);
            }},
           {"^",
-           [this, node](Value *left, Value *right) {
+           [this](ExprBinaryNode *node, Value *left, Value *right) {
              current = Builder->CreateXor(left, right);
            }},
       };
@@ -816,10 +843,13 @@ void Assembler::visitExprBinaryOp(ExprBinaryNode *node) {
   auto rightCasted = getCast(rightVal, node->_right->type, node->type);
 
   auto handler = binaryOpHandlers[node->_op];
-  handler(leftCasted, rightCasted);
+  handler(node, leftCasted, rightCasted);
 }
 
 void Assembler::error(std::string err) {
-  std::cerr << err << std::endl;
+  std::cerr << "Assembler error: " << err
+            << ". This is a compiler error, please report it at github: "
+               "https://github.com/Gustavo-maia-gst"
+            << std::endl;
   exit(1);
 }

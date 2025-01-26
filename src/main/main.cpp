@@ -57,7 +57,8 @@ void runAssembler(ProgramNode *programAst, Assembler *assembler) {
 
 void compile(Assembler *assembler, std::string out, char optLevel,
              std::string asmType) {
-  assembler->validateIR();
+  if (asmType != "basicIR")
+    assembler->validateIR();
 
   if (asmType != "basicIR")
     assembler->optimize(optLevel);

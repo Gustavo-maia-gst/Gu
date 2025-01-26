@@ -90,6 +90,7 @@ private:
   std::unique_ptr<llvm::Module> TheModule;
   std::map<RawDataType, llvm::Type *> rawTypeMapper;
 
+  ProgramNode *program;
   bool compiled = false;
   bool withEntrypoint;
   bool outWithReturn = false;

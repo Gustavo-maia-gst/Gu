@@ -84,7 +84,7 @@
 			"patterns": [
 				{
 					"name": "constant.numeric",
-					"match": "\\b\\d+\\b"
+					"match": "\\b(0x|0b)?\\d+(\\.)?\\d*\\b"
 				}
 			]
 		},

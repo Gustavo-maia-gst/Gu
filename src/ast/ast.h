@@ -171,6 +171,8 @@ private:
 };
 
 const std::set<std::string> reservedFunctions = {"sizeof"};
+const std::string MAIN_FUNC = "main";
+const std::string INIT_FUNC = "init";
 
 class ProgramNode : public AstNode {
 public:
@@ -293,6 +295,7 @@ public:
   std::string _name;
   TypeDefNode *_typeDef;
   ExprNode *_defaultVal;
+  std::vector<ExprNode *> _initArgs;
   bool _constant;
   bool _export;
   bool _external;
@@ -332,7 +335,7 @@ public:
 
 class TypeDefNode : public AstNode {
 public:
-  std::vector<TypeDefNode *> genericArgsDefs;
+  std::vector<TypeDefNode *> _genericArgsDefs;
   TypeDefNode *_pointsTo;
   TypeDefNode *_arrayOf;
   int _arrSize;

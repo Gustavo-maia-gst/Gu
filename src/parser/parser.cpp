@@ -388,7 +388,8 @@ WhileNode *AstParser::parseWhile(AstNode *parent) {
 }
 
 /*
-  VAR_DEF: IDENTIFIER TYPE TYPE_DEF [ ASSIGN EXPR]?
+  VAR_DEF: IDENTIFIER TYPE TYPE_DEF [ OPEN_PAR [EXPR [COMMA EXPR]*]? ]? [ ASSIGN
+  EXPR ]?
 */
 VarDefNode *AstParser::parseVarDef(AstNode *parent, bool constant) {
   auto token = nextExpected(IDENTIFIER, "Expecting identifier");
@@ -401,6 +402,16 @@ VarDefNode *AstParser::parseVarDef(AstNode *parent, bool constant) {
 
   nextExpected(IND_TYPE, "Expecting type indicator");
   node->_typeDef = parseTypeDef(node);
+
+  token = lexer->get();
+  if (token.mappedType == OPEN_PAR) {
+    node->_initArgs.push_back(parseExpr(node));
+    while (lexer->get().mappedType == COMMA)
+      node->_initArgs.push_back(parseExpr(node));
+    lexer->unget();
+    nextExpected(CLOSE_PAR, "Expecting ) closing init args");
+  } else
+    lexer->unget();
 
   token = lexer->get();
   if (token.mappedType == ASSIGN) {
@@ -452,10 +463,10 @@ TypeDefNode *AstParser::parseTypeDef(AstNode *parent) {
     nextExpected(CLOSE_BRACKETS, "Expecting ]");
   }
   if (lexer->look().mappedType == OPEN_GENERIC_TYPE) {
-    node->genericArgsDefs.push_back(parseTypeDef(node));
+    node->_genericArgsDefs.push_back(parseTypeDef(node));
     while (lexer->get().mappedType == COMMA) {
       token = nextExpected(IDENTIFIER, "Expecting type identifier");
-      node->genericArgsDefs.push_back(parseTypeDef(node));
+      node->_genericArgsDefs.push_back(parseTypeDef(node));
     }
     lexer->unget();
     nextExpected(CLOSE_GENERIC_TYPE, "Expecting end of generic params list");

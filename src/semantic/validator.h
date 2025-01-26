@@ -42,6 +42,9 @@ private:
   std::vector<std::string> errors;
   bool validateMain = true;
 
+  void validateArgs(FunctionNode *node,
+                    std::vector<ExprNode *> &args);
+
   void unexpected_error(std::string msg, AstNode *node);
   void compile_error(std::string msg, AstNode *node);
   void type_error(std::string msg, AstNode *node);

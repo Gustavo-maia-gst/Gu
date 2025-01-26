@@ -37,6 +37,13 @@ LibCDefiner::LibCDefiner() {
            buildParam("count", DataType::build(RawDataType::LONG)),
        },
        DataType::build(RawDataType::LONG)},
+      {"fnctl",
+       {
+
+           buildParam("fd", DataType::build(RawDataType::INT)),
+           buildParam("count", DataType::build(RawDataType::INT)),
+       },
+       DataType::build(RawDataType::INT)},
       {"lseek",
        {
 

@@ -1,0 +1,64 @@
+/* Standard file descriptors */
+const STDIN: int = 0, 
+      STDOUT: int = 1, 
+      STDERR: int = 2;
+
+/* Permission flags for sys_open */
+const O_RDONLY: int = 0x0000, 
+      O_WRONLY: int = 0x0001, 
+      O_RDWR: int = 0x0002,
+      O_CREAT: int = 0x0040, 
+      O_EXCL: int = 0x0080, 
+      O_TRUNC: int = 0x0200, 
+      O_APPEND: int = 0x0400, 
+      O_NONBLOCK: int = 0x0800, 
+      O_SYNC: int = 0x101000, 
+      O_DSYNC: int = 0x1000, 
+      O_RSYNC: int = 0x101000, 
+      O_NOFOLLOW: int = 0x20000, 
+      O_CLOEXEC: int = 0x80000;
+
+/* Command flags for sys_fcntl */
+const F_DUPFD: int = 0, 
+      F_GETFD: int = 1, 
+      F_SETFD: int = 2, 
+      F_GETFL: int = 3, 
+      F_SETFL: int = 4, 
+      FD_CLOEXEC: int = 1;
+
+/* Flags for sys_ioctl */
+const FIONREAD: int = 0x541B, 
+      FIONBIO: int = 0x5421, 
+      TCGETS: int = 0x5401, 
+      TCSETS: int = 0x5402;
+
+/* File permissions */
+const S_IRUSR: int = 0x0100, 
+      S_IWUSR: int = 0x0080, 
+      S_IXUSR: int = 0x0040,
+      S_IRGRP: int = 0x0020, 
+      S_IWGRP: int = 0x0010, 
+      S_IXGRP: int = 0x0008,
+      S_IROTH: int = 0x0004, 
+      S_IWOTH: int = 0x0002, 
+      S_IXOTH: int = 0x0001;
+
+/* poll flags */
+const POLLIN: int = 0x0001, 
+      POLLOUT: int = 0x0004, 
+      POLLERR: int = 0x0008, 
+      POLLHUP: int = 0x0010, 
+      POLLNVAL: int = 0x0020;
+
+struct Scanner {
+    __fd: int;
+    __buff: char[4096];
+
+    func init(self: *Scanner, fd: int) -> void {
+        *self.__fd = fd;
+    };
+
+    func isHealthy() -> int {
+        
+    };
+}
