@@ -73,7 +73,7 @@ void compile(Assembler *assembler, std::string out, char optLevel,
 
 int main(int argc, char **argv) {
   ArgHandler argHandler{};
-  argHandler.defArg("assembly", {"asm", "exec", "obj", "basicIR", "IR"}, "S");
+  argHandler.defArg("assembly", {"asm", "obj", "basicIR", "IR"}, "S");
   argHandler.defArg("output", {}, "o");
   argHandler.defArg("compile", {""}, "c", true);
   argHandler.defArg("opt", {"0", "1", "2", "3"}, "O");
@@ -81,15 +81,14 @@ int main(int argc, char **argv) {
   argHandler.parseArgs(argc, argv);
 
   auto [asmpresent, asmType] = argHandler.getArg("assembly");
-  if (!asmpresent)
-    asmType = "exec";
   auto [opresent, outputName] = argHandler.getArg("output");
   auto [cpresent, _] = argHandler.getArg("compile");
   auto [optpresent, optValue] = argHandler.getArg("opt");
 
-  if (cpresent && asmType == "exec") {
-    argHandler.parseError("Cannot compile an executable with -c");
-  }
+  if (!asmpresent)
+    asmType = "obj";
+  if (asmType == "obj" && !cpresent)
+    asmType = "exec";
 
   auto filenames = argHandler.getPosArgs();
   if (filenames.empty())

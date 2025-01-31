@@ -27,8 +27,9 @@ void ArgHandler::parseError(std::string msg) {
   std::cerr << "arg parsing error: " << msg << "\n";
   std::cerr << "usage: gu [OPTIONS] file\n";
   std::cerr << "Options:\n";
-  std::cerr << "\t[--assembly -S] [ exec | obj | asm | basicIR | IR] -> Defines the "
-               "output format, the default is exec, obj is a object file, asm is the Assembly format "
+  std::cerr << "\t[--assembly -S] [ obj | asm | basicIR | IR] -> Defines the "
+               "output format, the default is exec, obj is a object file, asm "
+               "is the Assembly format "
                "of the target machine, IR is the final generated IR and "
                "basicIR is the non-optimized basic form of IR\n";
   std::cerr
@@ -53,12 +54,12 @@ void ArgHandler::parseArgs(int argc, char **argv) {
         refName = shortcutToName[refName];
       }
 
-      if (++i < argc) {
-        if (nameToValidValues.find(refName) == nameToValidValues.end()) {
-          nameToValue[refName] = "";
-          i--;
-        }
+      if (nameToValidValues.find(refName) == nameToValidValues.end()) {
+        nameToValue[refName] = "";
+        i--;
+      }
 
+      if (++i < argc) {
         std::string value(argv[i]);
         bool isValid = nameToValidValues[refName].empty() ||
                        nameToValidValues[refName].find(value) !=

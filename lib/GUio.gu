@@ -1,5 +1,7 @@
+import base;
+
 /* Standard file descriptors */
-const STDIN: int = 0, 
+const STDIN: int = 0,
       STDOUT: int = 1, 
       STDERR: int = 2;
 
@@ -43,7 +45,7 @@ const S_IRUSR: int = 0x0100,
       S_IWOTH: int = 0x0002, 
       S_IXOTH: int = 0x0001;
 
-/* poll flags */
+/* Poll flags */
 const POLLIN: int = 0x0001, 
       POLLOUT: int = 0x0004, 
       POLLERR: int = 0x0008, 
@@ -53,12 +55,63 @@ const POLLIN: int = 0x0001,
 struct Scanner {
     __fd: int;
     __buff: char[4096];
+    __idx: int;
+    __eof: int;
+    __curr: char;
+    __ungetted: char;
 
     func init(self: *Scanner, fd: int) -> void {
         *self.__fd = fd;
+        *self.__eof = 0;
+        *self.__idx = -1;
     };
 
-    func isHealthy() -> int {
-        
+    func isHealthy(self: *Scanner) -> int {
+      if *self.__eof {
+            return 0;
+      }
+
+      const status: int = sys_fcntl(*self.__fd, F_GETFD);
+      return status > 0;
+    };
+
+    func __reloadBuffer(self: *Scanner) -> void {
+      *self.__idx = -1;
+      const readen: int = sys_read(*self.__fd, *self.__buff, 4096);
+      if readen < 0 {
+            *self.__eof = 1;
+      }
+    };
+
+    func __getch(self: *Scanner) -> char {
+      if *self.__ungetted {
+            const c: char = *self.__ungetted;
+            *self.__ungetted = 0;
+            return c;
+      }
+
+      if *self.__idx >= 4096 {
+            *self.__reloadBuffer();
+      }
+      if *self.__eof {
+            return 0;
+      }
+
+      *self.__idx = *self.__idx + 1;
+      return *self.__buff[*self.__idx];
+    };
+
+    func __ungetch(self: *Scanner, c: char) -> void {
+      if *self.__idx >= 0 {
+            *self.__buff[*self.__idx] = c;
+            *self.__idx = *self.__idx - 1;
+            return;
+      }
+
+      if *self.__ungetted {
+            return;
+      }
+
+      *self.__ungetted = c;
     };
 }

@@ -2,6 +2,7 @@
 #include <lld/Common/Driver.h>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/IR/BasicBlock.h>
+#include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Type.h>
@@ -162,7 +163,8 @@ void Assembler::generateObject(std::string out, bool useAsm) {
 
 Value *Assembler::loadValue(ExprNode *node) {
   node->visit(this);
-  if (node->type->raw == RawDataType::ARRAY)
+  if (node->type->raw == RawDataType::ARRAY ||
+      node->type->raw == RawDataType::POINTER)
     return current;
 
   std::set<NodeType> memoryAccessTypes = {
@@ -250,7 +252,14 @@ Value *Assembler::getCast(Value *value, DataType *original, DataType *castTo) {
 }
 
 Value *Assembler::getCondition(ExprNode *node, bool invert) {
+  if (node->type->raw != RawDataType::POINTER) {
+    node->visit(this);
+    current = Builder->CreateIsNull(current);
+    return current;
+  }
+
   current = loadValue(node);
+
   Value *condition;
 
   auto zero = getZero(node->type);
@@ -633,6 +642,12 @@ void Assembler::visitExprUnaryOp(ExprUnaryNode *node) {
     break;
   }
   case '!': {
+    if (node->_expr->type->raw == RawDataType::POINTER) {
+      node->_expr->visit(this);
+      current = Builder->CreateIsNull(current);
+      break;
+    }
+
     exprValue = loadValue(node->_expr);
     auto zero = getZero(node->_expr->type);
 
@@ -679,6 +694,11 @@ void Assembler::visitExprConstant(ExprConstantNode *node) {
   }
 
   if (node->type->raw == RawDataType::POINTER) {
+    if (node->_rawValue == "0") {
+      current = ConstantPointerNull::get((PointerType *)getType(node->type));
+      return;
+    }
+
     auto stringPtr = ConstantDataArray::getString(*TheContext, node->_rawValue);
     current =
         new GlobalVariable(*TheModule, stringPtr->getType(), true,
@@ -839,8 +859,11 @@ void Assembler::visitExprBinaryOp(ExprBinaryNode *node) {
   auto leftVal = loadValue(node->_left);
   auto rightVal = loadValue(node->_right);
 
-  auto leftCasted = getCast(leftVal, node->_left->type, node->type);
-  auto rightCasted = getCast(rightVal, node->_right->type, node->type);
+  auto castTo = DataType::getOperationType(node->_left->type, node->_op,
+                                           node->_right->type);
+
+  auto leftCasted = getCast(leftVal, node->_left->type, castTo);
+  auto rightCasted = getCast(rightVal, node->_right->type, castTo);
 
   auto handler = binaryOpHandlers[node->_op];
   handler(node, leftCasted, rightCasted);

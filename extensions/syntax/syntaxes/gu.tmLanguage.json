@@ -59,7 +59,7 @@
 			"patterns": [
 				{
 					"name": "entity.name.type",
-					"match": "\\b(char|short|int|long|float|double)\\b"
+					"match": "\\b(char|short|int|long|float|double|void)\\b"
 				}
 			]
 		},

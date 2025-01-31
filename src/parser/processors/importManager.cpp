@@ -1,16 +1,19 @@
 #include "importManager.h"
+#include <string>
 #include <vector>
 
 namespace fs = std::filesystem;
 
 const char *GU_LIB_ENV_VAR = "GU_LIB_PATH";
-const std::string defaultLibPath = "/usr/lib:/usr/local/lib";
+const char *homePath = std::getenv("HOME");
+const std::string defaultLibPath =
+    "/usr/lib:/usr/local/lib:" + std::string(homePath) + "/.local/lib";
 const char *envLibPathPtr = std::getenv(GU_LIB_ENV_VAR);
 const std::string envLibPath = envLibPathPtr ? envLibPathPtr : "";
 
 ImportManager::ImportManager() {
-  auto allPaths = defaultLibPath + envLibPath;
-  auto currPath = "";
+  std::string allPaths = defaultLibPath + envLibPath + ":";
+  std::string currPath = "";
 
   for (ulint i = 0; i < allPaths.size(); i++) {
     if (allPaths[i] != ':') {
@@ -32,24 +35,28 @@ ImportManager::ImportManager() {
       if (filename.substr(0, 2) != "GU")
         continue;
 
-      if (extension == "o")
-        libFilesO[filename.substr(2, filename.length() - 2)] = entry.path();
-      else if (extension == "guh")
-        libFilesH[filename.substr(2, filename.length() - 4)] = entry.path();
+      if (extension == ".o")
+        libFilesO[filename.substr(2, filename.length() - 4)] = entry.path();
+      else if (extension == ".guh")
+        libFilesH[filename.substr(2, filename.length() - 6)] = entry.path();
     }
+
+    currPath = "";
   }
 }
 
 void ImportManager::processImports(ProgramNode *program) {
   LibCDefiner libcDefiner{};
   std::vector<AstNode *> storedChildren;
-  for (auto child: program->_children) storedChildren.push_back(child);
+  for (auto child : program->_children)
+    storedChildren.push_back(child);
   program->_children.clear();
 
   libcDefiner.addPosixSyscallsDefs(program);
   handleFileImports(program);
 
-  for (auto child: storedChildren) program->_children.push_back(child);
+  for (auto child : storedChildren)
+    program->_children.push_back(child);
 }
 
 void ImportManager::handleFileImports(ProgramNode *program) {
@@ -63,8 +70,9 @@ void ImportManager::handleFileImports(ProgramNode *program) {
       filePath = getPackagePath(import.first);
 
     if (visitedFiles.find(filePath) != visitedFiles.end()) {
-        if (visitedFiles[filePath]) continue;
-        error("Circular import detected");
+      if (visitedFiles[filePath])
+        continue;
+      error("Circular import detected");
     }
 
     visitedFiles[filePath] = false;
@@ -105,6 +113,6 @@ ProgramNode *ImportManager::readFile(fs::path path) {
 }
 
 void ImportManager::error(std::string msg) {
-    std::cerr << "import error: " + msg << std::endl;
-    exit(1);
+  std::cerr << "import error: " + msg << std::endl;
+  exit(1);
 }

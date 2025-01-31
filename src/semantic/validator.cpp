@@ -1,7 +1,5 @@
 #include "validator.h"
 
-const std::set<std::string> logicalOps = {"==", "<", "<=", ">", ">=", "!="};
-
 inline bool isValidConditionType(DataType *type) {
   return DataType::isNumeric(type->raw) || DataType::isAddress(type->raw);
 }
@@ -20,7 +18,6 @@ void SemanticValidator::visitProgram(ProgramNode *node) {
 
   for (auto child : node->_children) {
     auto childType = child->getNodeType();
-    child->visit(this);
     switch (childType) {
     case NodeType::FUNCTION: {
       auto funcNode = (FunctionNode *)child;
@@ -50,6 +47,8 @@ void SemanticValidator::visitProgram(ProgramNode *node) {
       unexpected_error("Invalid nodeType in ProgramNode children", node);
       break;
     }
+
+    child->visit(this);
   }
 
   if (!node->funcs[MAIN_FUNC] && validateMain) {
@@ -215,12 +214,20 @@ void SemanticValidator::visitVarDef(VarDefNode *node) {
   }
 
   if (node->_defaultVal) {
-    if (DataType::getResultType(node->type, "=", node->_defaultVal->type) !=
-        node->type)
-      type_error("non-compatible type assignment", node);
+    bool correctType =
+        DataType::getResultType(node->type, "=", node->_defaultVal->type);
 
-    if (node->_defaultVal->getNodeType() == NodeType::EXPR_CONSTANT)
+    if (node->_defaultVal->getNodeType() == NodeType::EXPR_CONSTANT) {
+      auto constant = (ExprConstantNode *)node->_defaultVal;
+      if (node->type->raw == RawDataType::POINTER && constant->_rawValue == "0")
+        correctType = true;
+
       node->_defaultVal->type = node->type;
+    }
+
+    if (!correctType)
+      type_error("Invalid type assignment", node);
+    return;
   }
 
   bool hasInitArgs = !node->_initArgs.empty();
@@ -289,8 +296,7 @@ void SemanticValidator::visitIf(IfNode *node) {
     elseWithReturn = outWithReturn;
   }
 
-  if (ifWithReturn && elseWithReturn)
-    outWithReturn = true;
+  outWithReturn = ifWithReturn && elseWithReturn;
 
   if (DataType::isNumeric(exprType))
     return;

@@ -118,10 +118,17 @@ ProgramNode *AstParser::parseProgram() {
       parseFunction(node);
       break;
     case VAR:
-    case CONST:
-      parseVarDef(node, current.mappedType == CONST);
-      nextExpected(SEMICOLON, "Expecting semicolon");
+    case CONST: {
+      bool constant = current.mappedType == CONST;
+      parseVarDef(node, constant);
+
+      while ((lexer->get()).mappedType != SEMICOLON) {
+        lexer->unget();
+        nextExpected(COMMA, "Expecting , or ;");
+        parseVarDef(node, constant);
+      }
       break;
+    }
     case STRUCT:
       parseStruct(node);
       break;

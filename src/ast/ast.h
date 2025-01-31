@@ -103,6 +103,8 @@ public:
   virtual void visitExprConstant(ExprConstantNode *node) {};
 };
 
+extern std::set<std::string> logicalOperators;
+
 class DataType {
 public:
   DataType(TypeDefNode *node);
@@ -117,6 +119,10 @@ public:
 
   static DataType *getResultType(DataType *left, std::string op,
                                  DataType *right);
+  static DataType *getOperationType(DataType *left, std::string op,
+                                 DataType *right);
+
+  static bool isComparable(DataType *left, DataType *right);
 
   static bool isNumeric(RawDataType &raw);
   static bool isInt(RawDataType &raw);

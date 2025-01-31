@@ -4,6 +4,9 @@
 #include <string>
 #include <vector>
 
+std::set<std::string> logicalOperators = {
+    "!=", "==", "<=", ">=", "<", ">", "||", "&&"};
+
 void AstNode::visitChildren(BaseVisitor *visitor) {
   for (auto child : this->_children)
     child->visit(visitor);
@@ -83,13 +86,13 @@ void AstNode::visit(BaseVisitor *visitor) {
   }
 }
 
-inline bool DataType::isNumeric(RawDataType &raw) {
+bool DataType::isNumeric(RawDataType &raw) {
   return raw == RawDataType::CHAR || raw == RawDataType::SHORT ||
          raw == RawDataType::INT || raw == RawDataType::LONG ||
          raw == RawDataType::FLOAT || raw == RawDataType::DOUBLE;
 }
 
-inline bool DataType::isInt(RawDataType &raw) {
+bool DataType::isInt(RawDataType &raw) {
   return raw == RawDataType::CHAR || raw == RawDataType::SHORT ||
          raw == RawDataType::INT || raw == RawDataType::LONG;
 }
@@ -229,10 +232,72 @@ DataType *DataType::fromChar(std::string &ch) {
   return dataType;
 }
 
+DataType *promote(DataType *left, DataType *right) {
+  if (left->raw == RawDataType::DOUBLE)
+    return left;
+  if (right->raw == RawDataType::DOUBLE)
+    return right;
+  if (left->raw == RawDataType::FLOAT)
+    return left;
+  if (right->raw == RawDataType::FLOAT)
+    return right;
+  if (left->raw == RawDataType::LONG)
+    return left;
+  if (right->raw == RawDataType::LONG)
+    return right;
+  if (left->raw == RawDataType::INT)
+    return left;
+  if (right->raw == RawDataType::INT)
+    return right;
+  if (left->raw == RawDataType::SHORT)
+    return left;
+  if (right->raw == RawDataType::SHORT)
+    return right;
+  return left;
+}
+
+bool preValidate(DataType *left, DataType *right) {
+  if (!left || !right)
+    return false;
+
+  if (left->raw == RawDataType::ERROR || right->raw == RawDataType::ERROR)
+    return false;
+  if (left->raw == RawDataType::ERROR || left->raw == RawDataType::ARRAY ||
+      left->raw == RawDataType::STRUCT)
+    return false;
+  if (right->raw == RawDataType::ERROR || right->raw == RawDataType::ARRAY ||
+      right->raw == RawDataType::STRUCT)
+    return false;
+
+  return true;
+}
+
+DataType *DataType::getOperationType(DataType *left, std::string op,
+                                     DataType *right) {
+  if (!preValidate(left, right))
+    return build(RawDataType::ERROR);
+
+  if (isNumeric(left->raw) && isNumeric(right->raw))
+    return promote(left, right);
+  if (left->raw == RawDataType::POINTER && right->raw == RawDataType::POINTER)
+    return left;
+
+  return DataType::build(RawDataType::ERROR);
+}
+
 DataType *DataType::getResultType(DataType *left, std::string op,
                                   DataType *right) {
-  if (!left || !right)
-    return DataType::build(RawDataType::ERROR);
+  if (!preValidate(left, right))
+    return build(RawDataType::ERROR);
+
+  if (logicalOperators.find(op) != logicalOperators.end()) {
+    if (!isComparable(left, right))
+      return DataType::build(RawDataType::ERROR);
+    return DataType::build(RawDataType::INT);
+  }
+
+  if (isNumeric(left->raw) && isNumeric(right->raw))
+    return promote(left, right);
 
   if (op == "=") {
     if (left->equals(right))
@@ -251,53 +316,15 @@ DataType *DataType::getResultType(DataType *left, std::string op,
     }
   }
 
-  if (left->raw == RawDataType::ERROR || left->raw == RawDataType::ARRAY ||
-      left->raw == RawDataType::STRUCT)
-    return DataType::build(RawDataType::ERROR);
-  if (right->raw == RawDataType::ERROR || right->raw == RawDataType::ARRAY ||
-      right->raw == RawDataType::STRUCT)
-    return DataType::build(RawDataType::ERROR);
-
-  if (isNumeric(left->raw) && isNumeric(right->raw)) {
-    if (left->raw == RawDataType::DOUBLE)
-      return left;
-    if (left->raw == RawDataType::DOUBLE)
-      return right;
-    if (left->raw == RawDataType::FLOAT)
-      return left;
-    if (left->raw == RawDataType::FLOAT)
-      return right;
-    if (left->raw == RawDataType::LONG)
-      return left;
-    if (right->raw == RawDataType::LONG)
-      return right;
-    if (left->raw == RawDataType::INT)
-      return left;
-    if (right->raw == RawDataType::INT)
-      return right;
-    if (left->raw == RawDataType::SHORT)
-      return left;
-    if (right->raw == RawDataType::SHORT)
-      return right;
-    return left;
-  }
-
-  if (left->raw == RawDataType::POINTER && isInt(right->raw)) {
-    if (op == "+")
-      return left;
-    return DataType::build(RawDataType::ERROR);
-  }
-  if (right->raw == RawDataType::POINTER && isInt(left->raw)) {
-    if (op == "+")
-      return right;
-    return DataType::build(RawDataType::ERROR);
-  }
-
-  if (left->raw == RawDataType::POINTER && right->raw == RawDataType::POINTER) {
-    if (op == "-")
-      build(RawDataType::LONG);
-    return DataType::build(RawDataType::ERROR);
-  }
-
   return DataType::build(RawDataType::ERROR);
+}
+
+bool DataType::isComparable(DataType *left, DataType *right) {
+  if (left->raw == right->raw)
+    return true;
+
+  if (DataType::isNumeric(left->raw) && DataType::isNumeric(right->raw))
+    return true;
+
+  return false;
 }
