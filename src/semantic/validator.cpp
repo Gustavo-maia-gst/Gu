@@ -445,7 +445,7 @@ void SemanticValidator::visitExprUnaryOp(ExprUnaryNode *node) {
     break;
   }
   case '+': {
-    if (!DataType::isNumeric(node->type->raw)) {
+    if (!DataType::isNumeric(node->_expr->type->raw)) {
       type_error("Invalid operation + for type", node);
       node->type = DataType::build(RawDataType::ERROR);
     }
@@ -453,7 +453,7 @@ void SemanticValidator::visitExprUnaryOp(ExprUnaryNode *node) {
     break;
   }
   case '-': {
-    if (!DataType::isNumeric(node->type->raw)) {
+    if (!DataType::isNumeric(node->_expr->type->raw)) {
       type_error("Invalid operation - for type", node);
       node->type = DataType::build(RawDataType::ERROR);
     }
