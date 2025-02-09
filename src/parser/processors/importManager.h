@@ -17,6 +17,10 @@ public:
 
   void processImports(ProgramNode *program);
 
+  const std::set<std::string> getImportedFiles() {
+    return this->importedObjFiles;
+  }
+
 private:
   LibCDefiner libcDefiner;
 

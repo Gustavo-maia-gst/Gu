@@ -262,11 +262,9 @@ bool preValidate(DataType *left, DataType *right) {
 
   if (left->raw == RawDataType::ERROR || right->raw == RawDataType::ERROR)
     return false;
-  if (left->raw == RawDataType::ERROR || left->raw == RawDataType::ARRAY ||
-      left->raw == RawDataType::STRUCT)
+  if (left->raw == RawDataType::ERROR || left->raw == RawDataType::STRUCT)
     return false;
-  if (right->raw == RawDataType::ERROR || right->raw == RawDataType::ARRAY ||
-      right->raw == RawDataType::STRUCT)
+  if (right->raw == RawDataType::ERROR || right->raw == RawDataType::STRUCT)
     return false;
 
   return true;

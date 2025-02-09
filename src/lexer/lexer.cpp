@@ -192,7 +192,13 @@ void Lexer::nextToken_Number() {
     s = "";
     while (std::isxdigit(lookChar()))
       s += getChar();
-    int shex = std::stoi(s, nullptr, 16);
+
+    char *end = nullptr;
+    int shex = std::strtol(s.c_str(), &end, 16);
+    if (end == s.c_str() || *end != '\0' || errno == ERANGE) {
+      error("Invalid hex value");
+    }
+
     s = std::to_string(shex);
   } else if (s == "0" && lookChar() == 'b') {
     getChar();

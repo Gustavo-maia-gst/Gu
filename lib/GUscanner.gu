@@ -1,0 +1,150 @@
+import base;
+
+/* Standard file descriptors */
+const STDIN: int = 0,
+      STDOUT: int = 1, 
+      STDERR: int = 2;
+
+/* Permission flags for sys_open */
+const O_RDONLY: int = 0x0000, 
+      O_WRONLY: int = 0x0001, 
+      O_RDWR: int = 0x0002,
+      O_CREAT: int = 0x0040, 
+      O_EXCL: int = 0x0080, 
+      O_TRUNC: int = 0x0200, 
+      O_APPEND: int = 0x0400, 
+      O_NONBLOCK: int = 0x0800, 
+      O_SYNC: int = 0x101000, 
+      O_DSYNC: int = 0x1000, 
+      O_RSYNC: int = 0x101000, 
+      O_NOFOLLOW: int = 0x20000, 
+      O_CLOEXEC: int = 0x80000;
+
+/* Command flags for sys_fcntl */
+const F_DUPFD: int = 0, 
+      F_GETFD: int = 1, 
+      F_SETFD: int = 2, 
+      F_GETFL: int = 3, 
+      F_SETFL: int = 4, 
+      FD_CLOEXEC: int = 1;
+
+/* Flags for sys_ioctl */
+const FIONREAD: int = 0x541B, 
+      FIONBIO: int = 0x5421, 
+      TCGETS: int = 0x5401, 
+      TCSETS: int = 0x5402;
+
+/* File permissions */
+const S_IRUSR: int = 0x0100, 
+      S_IWUSR: int = 0x0080, 
+      S_IXUSR: int = 0x0040,
+      S_IRGRP: int = 0x0020, 
+      S_IWGRP: int = 0x0010, 
+      S_IXGRP: int = 0x0008,
+      S_IROTH: int = 0x0004, 
+      S_IWOTH: int = 0x0002, 
+      S_IXOTH: int = 0x0001;
+
+/* Poll flags */
+const POLLIN: int = 0x0001, 
+      POLLOUT: int = 0x0004, 
+      POLLERR: int = 0x0008, 
+      POLLHUP: int = 0x0010, 
+      POLLNVAL: int = 0x0020;
+
+func writeNum(n: int) -> void {
+    var i: int, j: int;
+    const buff: char[512];
+
+    for (i = 0; i < 512; i = i + 1) {
+        buff[i] = 0;
+    }
+
+    if (n < 0) {
+        n = -n;
+        buff[0] = '-';
+    } else {
+        buff[0] = '+';
+    }
+
+    i = j = 1;
+
+    for (; i < 512 && n / 10; i = i + 1) {
+        buff[i] = n % 10 + 0x30;
+        n = n / 10;
+    }
+
+    buff[i] = n + 0x30;
+    buff[i+1] = 0x0a;
+
+    for (; j < i; j = j + 1) {
+        const temp: int = buff[j];
+        buff[j] = buff[i];
+        buff[i] = temp;
+
+        i = i - 1;
+    }
+
+    sys_write(1, buff, 512);
+}
+
+struct BufferedReader {
+    __buff: char[4096];
+
+    __fd: int;
+    __idx: int;
+    __eof: int;
+    __end: char;
+
+    func init(self: *BufferedReader, fd: int) -> void {
+        *self.__fd = fd;
+        *self.__eof = 0;
+        *self.__idx = -1;
+        *self.__end = 0;
+    };
+
+    func isHealthy(self: *BufferedReader) -> int {
+      if *self.__eof {
+            return 0;
+      }
+
+      const status: int = sys_fcntl(*self.__fd, F_GETFD);
+      return status > 0;
+    };
+
+    func __reloadBuffer(self: *BufferedReader) -> void {
+      *self.__idx = 0;
+
+      const readen: int = sys_read(*self.__fd, *self.__buff, 4096); 
+      if readen < 0 {
+            *self.__eof = 1;
+      } else {
+            *self.__end = readen - 1;
+      }
+    };
+
+    func __getch(self: *BufferedReader) -> char {
+      if *self.__idx < 0 || *self.__idx >= *self.__end {
+            *self.__reloadBuffer();
+      }
+      if *self.__eof {
+            return 0;
+      }
+
+      const c: char = *self.__buff[*self.__idx];
+      *self.__idx = *self.__idx + 1;
+
+      return c;
+    };
+
+    func getLine(self: *BufferedReader, str: *char, maxSize: int) -> int {
+      var i: int = 0, c: char;
+
+      while (i < maxSize && (c = *self.__getch()) != 0 && c != '\n') {
+            str[i] = c;
+            i = i + 1;
+      }
+
+      return i;
+    };
+}

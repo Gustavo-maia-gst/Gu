@@ -99,6 +99,8 @@ void SemanticValidator::visitFunction(FunctionNode *node) {
 
   if (!outWithReturn && node->retType->raw != RawDataType::VOID)
     compile_error("Control reaches end of non-void function", node);
+
+  function = nullptr;
 }
 
 void SemanticValidator::visitStructDef(StructDefNode *node) {
@@ -124,6 +126,8 @@ void SemanticValidator::visitStructDef(StructDefNode *node) {
                       "function with the same name" +
                           varDefNode->_name,
                       node);
+      if (!varDefNode->_initArgs.empty())
+        compile_error("Struct members cannot have init args", node);
 
       node->membersDef[varDefNode->_name] = varDefNode;
       node->membersOffset[varDefNode->_name] = currentOffset++;
@@ -488,12 +492,12 @@ void SemanticValidator::visitExprBinaryOp(ExprBinaryNode *node) {
   }
 
   if (node->_op == "=") {
-    if (!node->var) {
+    if (!node->_left->var) {
       node->type = DataType::build(RawDataType::ERROR);
       return;
     }
 
-    if (node->var->_constant)
+    if (node->_left->var->_constant)
       compile_error("Assignment to constant variable", node);
   }
 }

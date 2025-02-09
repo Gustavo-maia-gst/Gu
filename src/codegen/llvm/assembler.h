@@ -56,7 +56,7 @@ class Assembler : public BaseVisitor {
 public:
   Assembler(bool withEntrypoint);
 
-  void optimize(char optLevel = '3');
+  void optimize(char optLevel);
   void printAssembled(std::string filename = "");
   void validateIR();
   void generateObject(std::string out, bool useAsm = false);
@@ -100,13 +100,15 @@ private:
   llvm::Function *function = nullptr;
   std::set<VarDefNode *> funcRegParams;
 
+  void defineFunction(FunctionNode *node);
+
   llvm::Type *getType(DataType *type);
   llvm::Value *loadValue(ExprNode *node);
   llvm::Value *getZero(DataType *type);
   llvm::Value *getOne(DataType *type);
   llvm::Value *getCast(llvm::Value *value, DataType *original,
                        DataType *castTo);
-  llvm::Value *getCondition(ExprNode *node, bool invert = false);
+  llvm::Value *getCondition(ExprNode *node, bool isTrue = true);
   llvm::Value *current;
 
   void error(std::string msg);

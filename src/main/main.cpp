@@ -8,7 +8,7 @@
 #include <cstdlib>
 #include <string>
 
-ProgramNode *getProgramAst(std::string filename) {
+ProgramNode *getProgramAst(std::string filename, std::vector<std::string> &filenames) {
   ImportManager importManager;
   AstCloner astCloner;
   TemplatesVisitor genericVisitor(&astCloner);
@@ -19,6 +19,9 @@ ProgramNode *getProgramAst(std::string filename) {
   auto program = parser.parseProgram();
   importManager.processImports(program);
   genericVisitor.visitProgram(program);
+
+  for (auto file: importManager.getImportedFiles())
+    filenames.push_back(file);
 
   return program;
 }
@@ -99,7 +102,7 @@ int main(int argc, char **argv) {
   SemanticValidator validator(!cpresent);
   Assembler assembler(!cpresent);
 
-  auto programAst = getProgramAst(filename);
+  auto programAst = getProgramAst(filename, filenames);
   runValidator(programAst, &validator);
   runAssembler(programAst, &assembler);
 

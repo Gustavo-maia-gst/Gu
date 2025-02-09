@@ -170,12 +170,6 @@ Value *Assembler::loadValue(ExprNode *node) {
   std::set<NodeType> memoryAccessTypes = {
       NodeType::VAR_REF, NodeType::INDEX_ACCESS, NodeType::MEMBER_ACCESS};
 
-  if (function && node->getNodeType() == NodeType::VAR_REF) {
-    auto argDef = ((ExprVarRefNode *)node)->var;
-    if (funcRegParams.find(argDef) != funcRegParams.end())
-      return current; // Parameters are saved in registers instead of memory
-  }
-
   if (memoryAccessTypes.find(node->getNodeType()) != memoryAccessTypes.end())
     return Builder->CreateLoad(getType(node->type), current);
   else
@@ -229,8 +223,10 @@ Value *Assembler::getOne(DataType *type) {
 Value *Assembler::getCast(Value *value, DataType *original, DataType *castTo) {
   if (original->equals(castTo))
     return value;
-  if (DataType::isAddress(original->raw) && DataType::isAddress((castTo->raw)))
+  if (DataType::isAddress(original->raw) &&
+      DataType::isAddress((castTo->raw))) {
     return value;
+  }
 
   if (!DataType::isNumeric(original->raw) || !DataType::isNumeric(castTo->raw))
     error("Invalid cast");
@@ -251,10 +247,11 @@ Value *Assembler::getCast(Value *value, DataType *original, DataType *castTo) {
   return nullptr;
 }
 
-Value *Assembler::getCondition(ExprNode *node, bool invert) {
-  if (node->type->raw != RawDataType::POINTER) {
+Value *Assembler::getCondition(ExprNode *node, bool isTrue) {
+  if (node->type->raw == RawDataType::POINTER) {
     node->visit(this);
-    current = Builder->CreateIsNull(current);
+    current = isTrue ? Builder->CreateIsNotNull(current)
+                     : Builder->CreateIsNull(current);
     return current;
   }
 
@@ -264,12 +261,12 @@ Value *Assembler::getCondition(ExprNode *node, bool invert) {
 
   auto zero = getZero(node->type);
   if (DataType::isFloat((node->type->raw))) {
-    condition = invert ? Builder->CreateFCmpOEQ(current, zero)
-                       : Builder->CreateFCmpUNE(current, zero);
+    condition = isTrue ? Builder->CreateFCmpONE(current, zero)
+                       : Builder->CreateFCmpUEQ(current, zero);
 
   } else {
-    condition = invert ? Builder->CreateICmpEQ(current, zero)
-                       : Builder->CreateICmpNE(current, zero);
+    condition = isTrue ? Builder->CreateICmpNE(current, zero)
+                       : Builder->CreateICmpEQ(current, zero);
   }
 
   return condition;
@@ -303,7 +300,7 @@ void Assembler::visitProgram(ProgramNode *node) {
   compiled = true;
 }
 
-void Assembler::visitFunction(FunctionNode *node) {
+void Assembler::defineFunction(FunctionNode *node) {
   funcRegParams.clear();
 
   std::vector<Type *> paramTypes;
@@ -311,6 +308,9 @@ void Assembler::visitFunction(FunctionNode *node) {
     paramTypes.push_back(getType(param->type));
     funcRegParams.insert(param);
   }
+
+  if (functionMap.find(node) != functionMap.end())
+    return;
 
   auto retType = getType(node->retType);
 
@@ -326,6 +326,14 @@ void Assembler::visitFunction(FunctionNode *node) {
                                *TheModule);
 
   functionMap[node] = func;
+}
+
+void Assembler::visitFunction(FunctionNode *node) {
+  this->defineFunction(node);
+
+  auto func = functionMap[node];
+  auto funcName = node->_name;
+
   if (node->_external)
     return;
 
@@ -334,17 +342,19 @@ void Assembler::visitFunction(FunctionNode *node) {
   if (funcName == MAIN_FUNC)
     main = func;
 
+  auto block = BasicBlock::Create(*TheContext, node->_name, func);
+  Builder->SetInsertPoint(block);
+
   for (ulint i = 0; i < node->_params.size(); i++) {
     auto arg = func->getArg(i);
     auto paramDef = node->_params[i];
-    auto paramType = paramTypes[i];
+    auto paramType = getType(paramDef->type);
 
-    arg->setName(paramDef->_name);
-    varContextMap[paramDef] = std::make_pair(paramType, arg);
+    auto paramVar = Builder->CreateAlloca(paramType, nullptr, paramDef->_name);
+
+    Builder->CreateStore(arg, paramVar);
+    varContextMap[paramDef] = std::make_pair(paramType, paramVar);
   }
-
-  auto block = BasicBlock::Create(*TheContext, node->_name, func);
-  Builder->SetInsertPoint(block);
 
   for (auto &[varName, varDef] : node->localVars) {
     if (funcRegParams.find(varDef) != funcRegParams.end())
@@ -380,9 +390,11 @@ void Assembler::visitStructDef(StructDefNode *node) {
     memberTypes.push_back(getType(memberDef->type));
   structType->setBody(memberTypes);
 
-  for (auto &[_, funcNode] : node->funcMembers) {
+  for (auto &[_, funcNode] : node->funcMembers)
+    defineFunction(funcNode);
+
+  for (auto &[_, funcNode] : node->funcMembers)
     funcNode->visit(this);
-  }
 }
 
 void Assembler::visitBody(BodyNode *node) {
@@ -408,7 +420,11 @@ void Assembler::visitIf(IfNode *node) {
 
   Builder->SetInsertPoint(ifBlock);
   node->_ifBody->visit(this);
-  if (!outWithReturn) {
+
+  bool ifWithReturn = outWithReturn;
+  bool elseWithReturn = false;
+
+  if (!ifWithReturn) {
     if (node->_elseBody) {
       endBlock = BasicBlock::Create(*TheContext, "endBlock", function);
       Builder->CreateBr(endBlock);
@@ -419,13 +435,16 @@ void Assembler::visitIf(IfNode *node) {
   if (node->_elseBody) {
     Builder->SetInsertPoint(elseBlock);
     node->_elseBody->visit(this);
-    if (!outWithReturn) {
+    elseWithReturn = outWithReturn;
+    if (!elseWithReturn) {
       if (!endBlock)
         endBlock = BasicBlock::Create(*TheContext, "endBlock", function);
 
       Builder->CreateBr(endBlock);
     }
   }
+
+  outWithReturn = ifWithReturn && elseWithReturn;
 
   if (endBlock)
     Builder->SetInsertPoint(endBlock);
@@ -450,6 +469,8 @@ void Assembler::visitWhile(WhileNode *node) {
   Builder->SetInsertPoint(loopBlock);
   node->_body->visit(this);
   Builder->CreateBr(testBlock);
+
+  outWithReturn = false;
 
   Builder->SetInsertPoint(endBlock);
 
@@ -478,6 +499,8 @@ void Assembler::visitFor(ForNode *node) {
 
   Builder->SetInsertPoint(loopBlock);
   node->_body->visit(this);
+  outWithReturn = false;
+
   if (node->_inc)
     node->_inc->visit(this);
   Builder->CreateBr(testBlock);
@@ -510,7 +533,7 @@ void Assembler::visitVarDef(VarDefNode *node) {
       auto initFunc = functionMap[structDef->funcMembers[INIT_FUNC]];
       std::vector<Value *> args;
       for (auto arg : node->_initArgs) {
-        arg->visit(this);
+        current = loadValue(arg);
         args.push_back(current);
       }
 
@@ -562,9 +585,11 @@ void Assembler::visitIndexAccess(ExprIndex *node) {
 
   auto arrType = getType(node->_inner->type);
 
-  // current = Builder->CreateGEP(arrType, array, {Builder->getInt32(0), index},
-  //                              "index");
-  current = Builder->CreateGEP(arrType, array, index, "index");
+  if (node->_inner->type->raw == RawDataType::ARRAY)
+    current = Builder->CreateGEP(arrType, array, {Builder->getInt32(0), index},
+                                 "index");
+  else
+    current = Builder->CreateGEP(arrType, array, index, "index");
 }
 
 void Assembler::visitExprCall(ExprCallNode *node) {
@@ -585,7 +610,8 @@ void Assembler::visitExprCall(ExprCallNode *node) {
 
   auto func = functionMap[node->func];
 
-  current = Builder->CreateCall(func, args, "call");
+  current = Builder->CreateCall(
+      func, args, node->func->retType->raw != RawDataType::VOID ? "call" : "");
 }
 
 void Assembler::visitSizeof(ExprCallNode *node) {
@@ -634,11 +660,7 @@ void Assembler::visitExprUnaryOp(ExprUnaryNode *node) {
     current = Builder->CreateLoad(exprType, exprValue, "derreferenced");
     break;
   case '&': {
-    auto localVar =
-        Builder->CreateAlloca(getType(node->type), nullptr, "address");
     node->_expr->visit(this);
-    Builder->CreateStore(current, localVar);
-    current = localVar;
     break;
   }
   case '!': {
@@ -715,28 +737,28 @@ void Assembler::visitExprBinaryOp(ExprBinaryNode *node) {
           {"+",
            [this](ExprBinaryNode *node, Value *left, Value *right) {
              if (DataType::isFloat(node->type->raw))
-               current = Builder->CreateFAdd(left, right, "add");
+               current = Builder->CreateFAdd(left, right);
              else
                current = Builder->CreateAdd(left, right);
            }},
           {"-",
            [this](ExprBinaryNode *node, Value *left, Value *right) {
              if (DataType::isFloat(node->type->raw))
-               current = Builder->CreateFSub(left, right, "add");
+               current = Builder->CreateFSub(left, right);
              else
                current = Builder->CreateSub(left, right);
            }},
           {"*",
            [this](ExprBinaryNode *node, Value *left, Value *right) {
              if (DataType::isFloat(node->type->raw))
-               current = Builder->CreateFMul(left, right, "add");
+               current = Builder->CreateFMul(left, right);
              else
                current = Builder->CreateMul(left, right);
            }},
           {"/",
            [this](ExprBinaryNode *node, Value *left, Value *right) {
              if (DataType::isFloat(node->type->raw))
-               current = Builder->CreateFDiv(left, right, "add");
+               current = Builder->CreateFDiv(left, right);
              else
                current = Builder->CreateSDiv(left, right);
            }},
@@ -763,6 +785,8 @@ void Assembler::visitExprBinaryOp(ExprBinaryNode *node) {
                                   ? Builder->CreateFCmpOGT(left, right)
                                   : Builder->CreateICmpSGT(left, right);
              current = Builder->CreateSelect(isGreater, one, zero);
+
+             current = Builder->CreateZExt(current, getType(node->type));
            }},
           {"<",
            [this](ExprBinaryNode *node, Value *left, Value *right) {
@@ -772,6 +796,8 @@ void Assembler::visitExprBinaryOp(ExprBinaryNode *node) {
                                   ? Builder->CreateFCmpOLT(left, right)
                                   : Builder->CreateICmpSLT(left, right);
              current = Builder->CreateSelect(isGreater, one, zero);
+
+             current = Builder->CreateZExt(current, getType(node->type));
            }},
           {">=",
            [this](ExprBinaryNode *node, Value *left, Value *right) {
@@ -781,6 +807,8 @@ void Assembler::visitExprBinaryOp(ExprBinaryNode *node) {
                                   ? Builder->CreateFCmpOGE(left, right)
                                   : Builder->CreateICmpSGE(left, right);
              current = Builder->CreateSelect(isGreater, one, zero);
+
+             current = Builder->CreateZExt(current, getType(node->type));
            }},
           {"<=",
            [this](ExprBinaryNode *node, Value *left, Value *right) {
@@ -790,6 +818,8 @@ void Assembler::visitExprBinaryOp(ExprBinaryNode *node) {
                                   ? Builder->CreateFCmpOLE(left, right)
                                   : Builder->CreateICmpSLE(left, right);
              current = Builder->CreateSelect(isGreater, one, zero);
+
+             current = Builder->CreateZExt(current, getType(node->type));
            }},
           {"==",
            [this](ExprBinaryNode *node, Value *left, Value *right) {
@@ -799,6 +829,8 @@ void Assembler::visitExprBinaryOp(ExprBinaryNode *node) {
                                   ? Builder->CreateFCmpOEQ(left, right)
                                   : Builder->CreateICmpEQ(left, right);
              current = Builder->CreateSelect(isGreater, one, zero);
+
+             current = Builder->CreateZExt(current, getType(node->type));
            }},
           {"!=",
            [this](ExprBinaryNode *node, Value *left, Value *right) {
@@ -808,6 +840,7 @@ void Assembler::visitExprBinaryOp(ExprBinaryNode *node) {
                                   ? Builder->CreateFCmpONE(left, right)
                                   : Builder->CreateICmpNE(left, right);
              current = Builder->CreateSelect(isGreater, one, zero);
+             current = Builder->CreateZExt(current, getType(node->type));
            }},
           {"&&",
            [this](ExprBinaryNode *node, Value *left, Value *right) {
@@ -819,6 +852,12 @@ void Assembler::visitExprBinaryOp(ExprBinaryNode *node) {
              auto rightNonZero = DataType::isFloat(node->type->raw)
                                      ? Builder->CreateFCmpONE(right, zero)
                                      : Builder->CreateICmpNE(right, zero);
+
+             leftNonZero =
+                 Builder->CreateZExt(leftNonZero, getType(node->type));
+             rightNonZero =
+                 Builder->CreateZExt(rightNonZero, getType(node->type));
+
              current = Builder->CreateAnd(leftNonZero, rightNonZero);
            }},
           {"||",
@@ -831,6 +870,12 @@ void Assembler::visitExprBinaryOp(ExprBinaryNode *node) {
              auto rightNonZero = DataType::isFloat(node->type->raw)
                                      ? Builder->CreateFCmpONE(right, zero)
                                      : Builder->CreateICmpNE(right, zero);
+
+             leftNonZero =
+                 Builder->CreateZExt(leftNonZero, getType(node->type));
+             rightNonZero =
+                 Builder->CreateZExt(rightNonZero, getType(node->type));
+
              current = Builder->CreateOr(leftNonZero, rightNonZero);
            }},
           {"&",
@@ -851,7 +896,8 @@ void Assembler::visitExprBinaryOp(ExprBinaryNode *node) {
     auto rightVal = loadValue(node->_right);
     node->_left->visit(this);
     auto leftPtr = current;
-    Builder->CreateStore(rightVal, leftPtr);
+    auto casted = getCast(rightVal, node->_right->type, node->_left->type);
+    Builder->CreateStore(casted, leftPtr);
     current = rightVal;
     return;
   }
